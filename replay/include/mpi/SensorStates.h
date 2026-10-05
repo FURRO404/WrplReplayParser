@@ -51,9 +51,15 @@ struct SensorsControlStates {
   bool on() const { return first_bool; }
   /// Indexes into the sensor blk (gamedata/sensors/*.blk), each in the key order of its
   /// block: `transivers`, `scanPatterns`, `signals`. None when the sensor has none.
-  std::optional<uint8_t> transceiver() const { return kind1() && field136_0x88 != 0xf ? std::optional<uint8_t>(field136_0x88) : std::nullopt; }
-  std::optional<uint8_t> scan_pattern() const { return kind1() && field137_0x89 != 0x3f ? std::optional<uint8_t>(field137_0x89) : std::nullopt; }
-  std::optional<uint8_t> signal() const { return kind1() && field138_0x8a != 0xf ? std::optional<uint8_t>(field138_0x8a) : std::nullopt; }
+  std::optional<uint8_t> transceiver() const {
+    return kind1() && field136_0x88 != 0xf ? std::optional<uint8_t>(field136_0x88) : std::nullopt;
+  }
+  std::optional<uint8_t> scan_pattern() const {
+    return kind1() && field137_0x89 != 0x3f ? std::optional<uint8_t>(field137_0x89) : std::nullopt;
+  }
+  std::optional<uint8_t> signal() const {
+    return kind1() && field138_0x8a != 0xf ? std::optional<uint8_t>(field138_0x8a) : std::nullopt;
+  }
   /// Battle time in seconds of the last mode change.
   std::optional<float> mode_time() const { return kind1() ? std::optional<float>(some_data_1) : std::nullopt; }
   /// Scan centre in radians, relative to the vehicle: yaw about +Y, then pitch about +Z

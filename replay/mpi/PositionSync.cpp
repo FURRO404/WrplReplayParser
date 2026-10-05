@@ -156,8 +156,8 @@ std::vector<std::string> unit::getUnitTagsName(std::string_view &name) {
 G_STATIC_ASSERT(sizeof(TargetDesignationControlState) == 0x50);
 
 
-// Keeps the block when all of it is there. A short block is skipped as before, so the
-// reads after it land where they always did.
+// Keeps the block when all of it is there. A block cut short is skipped, so the reads
+// after it stay at the correct offset.
 static void ReadSeekerBits(ParserState &state, const BitStream &bs, uint32_t bits, mpi::SeekerEvent &ev) {
   ev.bits = bits;
   ev.data.resize(BITS_TO_BYTES(bits));
@@ -211,7 +211,8 @@ mpi::SeekerState mpi::DecodeSeeker(const SeekerEvent &ev) {
   } else {
     return st;
   }
-  st.los = Point3(SeekerValue<int16_t>(ev, los_at), SeekerValue<int16_t>(ev, los_at + 16), SeekerValue<int16_t>(ev, los_at + 32)) / 32767.f;
+  st.los = Point3(SeekerValue<int16_t>(ev, los_at), SeekerValue<int16_t>(ev, los_at + 16),
+                  SeekerValue<int16_t>(ev, los_at + 32)) / 32767.f;
   st.decoded = true;
   return st;
 }

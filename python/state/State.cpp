@@ -130,7 +130,8 @@ void PyReplayState::include(py::module_ &m) {
     .def_readonly("sensors", &ParserState::SensorEvents, "Sensor states from the aircraft and ground vehicle syncs")
     .def_readonly("designations", &ParserState::DesignationEvents,
                   "Target designations from the aircraft and ground vehicle syncs")
-    .def_readonly("seekers", &ParserState::SeekerEvents, "Seeker blocks of stores in flight, aircraft and ground vehicles; the known ones decoded")
+    .def_readonly("seekers", &ParserState::SeekerEvents,
+                  "Seeker blocks of stores in flight, aircraft and ground vehicles; the known ones decoded")
     .def_readonly("shots", &ParserState::ShotEvents,
                   "0xF0B1 single shot, 0xF01B / 0xF01C trigger down and up")
     .def(
