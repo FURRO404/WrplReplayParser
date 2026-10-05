@@ -155,16 +155,23 @@ std::vector<std::string> unit::getUnitTagsName(std::string_view &name) {
 G_STATIC_ASSERT(sizeof(TargetDesignationControlState) == 0x50);
 
 
-void DeserializeSeekerData(BitStream &bs) {
-  // this will probably never be implemented unless if I actually go through and try to understand what this complex
-  // bullshit is
+// Keeps the block when all of it is there. A short block is skipped as before, so the
+// reads after it land where they always did.
+static void ReadSeekerBits(ParserState &state, const BitStream &bs, uint32_t bits, mpi::SeekerEvent &ev) {
+  ev.bits = bits;
+  ev.data.resize(BITS_TO_BYTES(bits));
+  if (bs.ReadBits(ev.data.data(), bits))
+    state.SeekerEvents.push_back(std::move(ev));
+  else
+    bs.IgnoreBits(bits);
+}
+
+void DeserializeSeekerData(ParserState &state, BitStream &bs, mpi::SeekerSource source, unit::Unit *unit) {
   uint32_t val;
   bs.Read(val);
-  auto read_offs = bs.GetReadOffset();
-  bs.SetReadOffset(read_offs + val);
-  // bool does_read_call_one = bs.ReadBit();
-
-  return;
+  mpi::SeekerEvent ev{state.curr_time_ms, source};
+  ev.unit = unit;
+  ReadSeekerBits(state, bs, val, ev);
 }
 
 bool FMSync(ParserState &state, BitStream &bs) {
@@ -300,10 +307,12 @@ bool FMSync(ParserState &state, BitStream &bs) {
           for (auto &s: sensors) {
             RET_FAIL(s.deserialize(bs));
           }
-          uint8_t v;
+          uint8_t v = 0;
           if (sensorsCount != 0) {
             bs.Read(v);
           }
+          for (uint8_t i = 0; i < sensorsCount; i++)
+            state.SensorEvents.push_back({state.curr_time_ms, unit, i, v, sensors[i]});
 
           uint8_t counterMeasuresCount;
           bs.Read(counterMeasuresCount);
@@ -319,8 +328,9 @@ bool FMSync(ParserState &state, BitStream &bs) {
           bs.ReadBits(&targetsNum, 4);
           RET_FAIL(targetsNum <= TARGETS_NUM);
           std::pmr::vector<TargetDesignationControlState> targets{targetsNum, state.get_allocator()};
-          for (auto &t: targets) {
-            RET_FAIL(t.deserialize(bs));
+          for (uint8_t i = 0; i < targetsNum; i++) {
+            RET_FAIL(targets[i].deserialize(bs));
+            state.DesignationEvents.push_back({state.curr_time_ms, unit, i, targets[i]});
           }
           bool bit_thing;
           bs.Read(bit_thing);
@@ -333,7 +343,7 @@ bool FMSync(ParserState &state, BitStream &bs) {
           bool bit_thing_2;
           bs.Read(bit_thing_2);
           if (bit_thing_2) {
-            DeserializeSeekerData(bs);
+            DeserializeSeekerData(state, bs, mpi::SeekerAircraft, unit);
           }
         }
       }
@@ -610,10 +620,13 @@ bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, bool is_f
   for (auto &sensor: states) {
     RET_FAIL(sensor.deserialize(bs));
   }
+  uint8_t some_weird_val = 0;
   if (sensorsCount > 0) {
-    uint8_t some_weird_val;
     RET_FAIL(bs.Read(some_weird_val));
   }
+  if (ref->ref_1)
+    for (uint8_t i = 0; i < sensorsCount; i++)
+      state.SensorEvents.push_back({state.curr_time_ms, ref->ref_1, i, some_weird_val, states[i]});
   uint8_t counterMeasuresCount;
   RET_FAIL(bs.Read(counterMeasuresCount));
   RET_FAIL(counterMeasuresCount <= COUNTER_MEASURES_COUNT);
@@ -627,8 +640,10 @@ bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, bool is_f
   RET_FAIL(targetsNum <= 8);
   thread_local std::vector<TargetDesignationControlState> targets{};
   targets.resize(targetsNum);
-  for (auto &t: targets) {
-    RET_FAIL(t.deserialize(bs));
+  for (uint8_t i = 0; i < targetsNum; i++) {
+    RET_FAIL(targets[i].deserialize(bs));
+    if (ref->ref_1)
+      state.DesignationEvents.push_back({state.curr_time_ms, ref->ref_1, i, targets[i]});
   }
   if (ref->ref_1) {
     ref->ref_1->calculateTurretData();
@@ -737,7 +752,7 @@ bool GMSync(ParserState &state, BitStream &bs) {
         if (has_sensor_info) {
           bs.Read(has_sensor_info_2);
           if (has_sensor_info_2) {
-            DeserializeSeekerData(bs);
+            DeserializeSeekerData(state, bs, mpi::SeekerGround, ref.ref_1);
           }
         }
         bs.AlignReadToByteBoundary();
@@ -895,7 +910,10 @@ bool ParseWeapon(ParserState &state, const BitStream &bs, get_weapon_cb cb) {
       RET_FAIL(bs.Read(vv2));
       uint16_t sz;
       RET_FAIL(bs.Read(sz));
-      bs.IgnoreBits(sz); // most likely seeker information
+      mpi::SeekerEvent ev{state.curr_time_ms, mpi::SeekerWeapon, eid};
+      ev.head_f = vv;
+      ev.head_b = vv2;
+      ReadSeekerBits(state, bs, sz, ev);
     } else if (resyncSaclosGuidanceParams) {
       bool do_stuff;
       RET_FAIL(bs.Read(do_stuff));

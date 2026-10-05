@@ -2,6 +2,7 @@
 #include "Unit.h"
 #include "modules/ecs/EntityId.h"
 #include "mpi/GeneralObject.h"
+#include "mpi/SensorStates.h"
 #include "modules/bind_readonly_vector.h"
 PyBattleMessages py_battle_messages;
 void PyBattleMessages::include(py::module_ &m) {
@@ -166,6 +167,80 @@ void PyBattleMessages::include(py::module_ &m) {
       .def_readonly("unit", &mpi::ShotEvent::unit)
       .def_readonly("kind", &mpi::ShotEvent::kind)
       .def_readonly("weapon_id", &mpi::ShotEvent::weapon_id);
+
+  // Field names follow SensorsControlStates and TargetDesignationControlState, whose
+  // meaning is not settled yet; the values go out raw so they can be studied.
+  py::class_<mpi::SensorEvent>(mpi, "SensorEvent")
+      .def_readonly("time_ms", &mpi::SensorEvent::time_ms)
+      .def_readonly("unit", &mpi::SensorEvent::unit)
+      .def_readonly("index", &mpi::SensorEvent::index)
+      .def_readonly("list_tail", &mpi::SensorEvent::list_tail)
+      .def_property_readonly("type_byte", [](const mpi::SensorEvent &e) { return e.state.sensor_type_maybe; })
+      .def_property_readonly("first_bool", [](const mpi::SensorEvent &e) { return e.state.first_bool; })
+      .def_property_readonly("nib_a", [](const mpi::SensorEvent &e) { return e.state.field136_0x88; })
+      .def_property_readonly("nib_b", [](const mpi::SensorEvent &e) { return e.state.field137_0x89; })
+      .def_property_readonly("nib_c", [](const mpi::SensorEvent &e) { return e.state.field138_0x8a; })
+      .def_property_readonly("f1", [](const mpi::SensorEvent &e) { return e.state.some_data_1; })
+      .def_property_readonly("f2", [](const mpi::SensorEvent &e) { return e.state.some_data_2; })
+      .def_property_readonly("f3", [](const mpi::SensorEvent &e) { return e.state.some_data_3; })
+      .def_property_readonly("f4", [](const mpi::SensorEvent &e) { return e.state.some_data_4; })
+      .def_property_readonly("f5", [](const mpi::SensorEvent &e) { return e.state.some_data_5; })
+      .def_property_readonly("f147", [](const mpi::SensorEvent &e) { return e.state.field147_0xa8; })
+      .def_property_readonly("b6", [](const mpi::SensorEvent &e) {
+        return py::bytes(e.state.some_data_6, sizeof(e.state.some_data_6));
+      })
+      .def_property_readonly("i149", [](const mpi::SensorEvent &e) { return e.state.field149_0xa4; })
+      .def_property_readonly("i150", [](const mpi::SensorEvent &e) { return e.state.field150_0xa8; })
+      .def_property_readonly("contacts",
+                             [](const mpi::SensorEvent &e) {
+                               py::list out;
+                               for (uint32_t c: e.state.field4_0x4)
+                                 out.append(c);
+                               return out;
+                             })
+      .def_property_readonly("contacts_tail", [](const mpi::SensorEvent &e) { return e.state.field133_0x85; });
+
+  py::class_<mpi::DesignationEvent>(mpi, "DesignationEvent")
+      .def_readonly("time_ms", &mpi::DesignationEvent::time_ms)
+      .def_readonly("unit", &mpi::DesignationEvent::unit)
+      .def_readonly("index", &mpi::DesignationEvent::index)
+      .def_property_readonly("v1", [](const mpi::DesignationEvent &e) { return e.state.v1; })
+      .def_property_readonly("v2", [](const mpi::DesignationEvent &e) { return e.state.v2; })
+      .def_property_readonly("v3", [](const mpi::DesignationEvent &e) { return e.state.v3; })
+      .def_property_readonly("v4", [](const mpi::DesignationEvent &e) { return e.state.v4; })
+      .def_property_readonly("compressed", [](const mpi::DesignationEvent &e) { return e.state.write_compressed; })
+      .def_property_readonly("v5", [](const mpi::DesignationEvent &e) { return e.state.v5; })
+      .def_property_readonly("v6", [](const mpi::DesignationEvent &e) { return e.state.v6; })
+      .def_property_readonly("v7", [](const mpi::DesignationEvent &e) { return e.state.v7; })
+      .def_property_readonly("v8", [](const mpi::DesignationEvent &e) { return e.state.v8; })
+      .def_property_readonly("v9", [](const mpi::DesignationEvent &e) { return e.state.v9; })
+      .def_property_readonly("v10", [](const mpi::DesignationEvent &e) { return e.state.v10; })
+      .def_property_readonly("v11", [](const mpi::DesignationEvent &e) { return e.state.v11; })
+      .def_property_readonly("v12", [](const mpi::DesignationEvent &e) { return e.state.v12; })
+      .def_property_readonly("v13", [](const mpi::DesignationEvent &e) { return e.state.v13; })
+      .def_property_readonly("v14", [](const mpi::DesignationEvent &e) { return e.state.v14; })
+      .def_property_readonly("v15", [](const mpi::DesignationEvent &e) { return e.state.v15; });
+
+  py::enum_<mpi::SeekerSource>(mpi, "SeekerSource")
+      .value("Weapon", mpi::SeekerWeapon)
+      .value("Aircraft", mpi::SeekerAircraft)
+      .value("Ground", mpi::SeekerGround);
+
+  py::class_<mpi::SeekerEvent>(mpi, "SeekerEvent")
+      .def_readonly("time_ms", &mpi::SeekerEvent::time_ms)
+      .def_readonly("source", &mpi::SeekerEvent::source)
+      .def_readonly("eid", &mpi::SeekerEvent::eid)
+      .def_readonly("unit", &mpi::SeekerEvent::unit)
+      .def_readonly("head_f", &mpi::SeekerEvent::head_f)
+      .def_readonly("head_b", &mpi::SeekerEvent::head_b)
+      .def_readonly("bits", &mpi::SeekerEvent::bits)
+      .def_property_readonly("data", [](const mpi::SeekerEvent &e) {
+        return py::bytes(reinterpret_cast<const char *>(e.data.data()), e.data.size());
+      });
+
+  bind_readonly_vector_no_contain<std::pmr::vector<mpi::SeekerEvent>>(m, "SeekerEventList");
+  bind_readonly_vector_no_contain<std::pmr::vector<mpi::SensorEvent>>(m, "SensorEventList");
+  bind_readonly_vector_no_contain<std::pmr::vector<mpi::DesignationEvent>>(m, "DesignationEventList");
 
   bind_readonly_vector_no_contain<std::pmr::vector<mpi::HitEffect>>(m, "HitEffectList");
   bind_readonly_vector_no_contain<std::pmr::vector<mpi::HitAnalysis>>(m, "HitAnalysisList");

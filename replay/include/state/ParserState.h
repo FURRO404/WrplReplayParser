@@ -6,6 +6,7 @@
 #include "network/CNetwork.h"
 #include "mpi/ObjectDispatcher.h"
 #include "mpi/GeneralObject.h"
+#include "mpi/SensorStates.h"
 #include "Replay/Replay.h"
 #include "danet/delta/deltaCompression.h"
 #ifndef _ECS_CODEGEN
@@ -156,6 +157,9 @@ public:
   std::pmr::vector<mpi::HitOutcome> HitOutcomes{get_allocator()};
   std::pmr::vector<mpi::AmmoEvent> AmmoEvents{get_allocator()};
   std::pmr::vector<mpi::ShotEvent> ShotEvents{get_allocator()};
+  std::pmr::vector<mpi::SensorEvent> SensorEvents{get_allocator()};
+  std::pmr::vector<mpi::DesignationEvent> DesignationEvents{get_allocator()};
+  std::pmr::vector<mpi::SeekerEvent> SeekerEvents{get_allocator()};
   // missionArea1 owns the ptrs
   std::pmr::vector<ObjectRewindState<MissionArea *, false, true> *> missionAreas1{get_allocator()};
   std::pmr::vector<ObjectRewindState<MissionArea *, false> *> missionAreas2{get_allocator()};

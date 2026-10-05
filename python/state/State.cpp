@@ -127,6 +127,10 @@ void PyReplayState::include(py::module_ &m) {
                   "Rounds left in a barrel: 0xF0BD for a ground vehicle, the aircraft sync for a plane. "
                   "A step down is that many rounds fired. The aircraft one rides every update, so values "
                   "repeat; a ground vehicle only sends it on a change.")
+    .def_readonly("sensors", &ParserState::SensorEvents, "Sensor states from the aircraft and ground vehicle syncs")
+    .def_readonly("designations", &ParserState::DesignationEvents,
+                  "Target designations from the aircraft and ground vehicle syncs")
+    .def_readonly("seekers", &ParserState::SeekerEvents, "Seeker blocks of stores in flight, aircraft and ground vehicles, as raw bits")
     .def_readonly("shots", &ParserState::ShotEvents,
                   "0xF0B1 single shot, 0xF01B / 0xF01C trigger down and up")
     .def(
