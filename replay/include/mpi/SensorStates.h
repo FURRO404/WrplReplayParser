@@ -67,6 +67,15 @@ struct SensorsControlStates {
   /// track, toward the target, up to the scan pattern's azimuth and elevation limits.
   std::optional<float> scan_az() const { return kind1() ? std::optional<float>(some_data_4) : std::nullopt; }
   std::optional<float> scan_el() const { return kind1() ? std::optional<float>(some_data_5) : std::nullopt; }
+  /// Unit uids of the targets the sensor detects at this sync (search, TWS track files, the
+  /// tracked target). A contact names a unit as 0xFFFF0000 | uid; other values are left out.
+  std::vector<uint16_t> contact_uids() const {
+    std::vector<uint16_t> out;
+    for (uint32_t c: field4_0x4)
+      if ((c >> 16) == 0xFFFF)
+        out.push_back(c & 0xFFFF);
+    return out;
+  }
 
 private:
   /// A kind-1 record that is on and has its state carries the values above.

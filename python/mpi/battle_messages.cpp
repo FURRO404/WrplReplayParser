@@ -207,7 +207,9 @@ void PyBattleMessages::include(py::module_ &m) {
                                  out.append(c);
                                return out;
                              })
-      .def_property_readonly("contacts_tail", [](const mpi::SensorEvent &e) { return e.state.field133_0x85; });
+      .def_property_readonly("contacts_tail", [](const mpi::SensorEvent &e) { return e.state.field133_0x85; })
+      .def_property_readonly("contact_uids", [](const mpi::SensorEvent &e) { return e.state.contact_uids(); },
+                             "Unit uids of the targets the sensor detects at this sync");
 
   py::class_<mpi::DesignationEvent>(mpi, "DesignationEvent")
       .def_readonly("time_ms", &mpi::DesignationEvent::time_ms)
