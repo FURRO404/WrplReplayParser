@@ -162,6 +162,22 @@ void PyBattleMessages::include(py::module_ &m) {
       .value("FireStart", mpi::ShotFireStart)
       .value("FireStop", mpi::ShotFireStop);
 
+  py::class_<mpi::CockpitEvent>(mpi, "CockpitEvent")
+      .def_readonly("time_ms", &mpi::CockpitEvent::time_ms)
+      .def_property_readonly("params", [](const mpi::CockpitEvent &e) {
+        py::dict d;
+        for (auto &[id, v]: e.params)
+          d[py::int_(id)] = v;
+        return d;
+      }, "{id: value}; see CockpitEvent in GeneralObject.h for the ids that are known");
+
+  py::class_<mpi::SpotEvent>(mpi, "SpotEvent")
+      .def_readonly("time_ms", &mpi::SpotEvent::time_ms)
+      .def_readonly("spotter_id", &mpi::SpotEvent::spotter_id, "uid of an aircraft, or 0x800 | uid of a ground vehicle")
+      .def_readonly("spotted_id", &mpi::SpotEvent::spotted_id, "uid of an aircraft, or 0x800 | uid of a ground vehicle")
+      .def_readonly("spotter", &mpi::SpotEvent::spotter)
+      .def_readonly("spotted", &mpi::SpotEvent::spotted);
+
   py::class_<mpi::ShotEvent>(mpi, "ShotEvent")
       .def_readonly("time_ms", &mpi::ShotEvent::time_ms)
       .def_readonly("unit", &mpi::ShotEvent::unit)
@@ -234,6 +250,32 @@ void PyBattleMessages::include(py::module_ &m) {
       .def_property_readonly("target_uid", [](const mpi::DesignationEvent &e) { return e.state.target_uid(); },
                              "Unit uid of the designated target, or None");
 
+  py::class_<mpi::EngineSync>(mpi, "EngineSync")
+      .def_readonly("state", &mpi::EngineSync::state, "7 while the engine runs, 8 once it has stopped")
+      .def_readonly("afterburner", &mpi::EngineSync::afterburner,
+                    "Afterburner throttle of a jet, 1.0 to 1.1; None at or below 100%, and always on a prop")
+      .def_readonly("health", &mpi::EngineSync::health, "Engine health below 1.0, else None; 0 once stopped")
+      .def_property_readonly(
+        "radiators", [](const mpi::EngineSync &e) { return py::make_tuple(e.radiators[0], e.radiators[1]); },
+        "Radiator flaps of a prop, 0 to 255 each; 0 on a jet");
+
+  py::class_<mpi::ControlEvent>(mpi, "ControlEvent")
+      .def_readonly("time_ms", &mpi::ControlEvent::time_ms)
+      .def_readonly("unit", &mpi::ControlEvent::unit)
+      .def_readonly("on_ground", &mpi::ControlEvent::on_ground)
+      .def_property_readonly("pitch", &mpi::ControlEvent::pitch, "Pitch stick, -1 to 1, positive for a pull")
+      .def_property_readonly("roll", &mpi::ControlEvent::roll, "Roll stick, -1 to 1")
+      .def_property_readonly("rudder", &mpi::ControlEvent::rudder, "Rudder pedals, -1 to 1")
+      .def_property_readonly("flaps", &mpi::ControlEvent::flaps, "0 to 1")
+      .def_property_readonly("airbrake", &mpi::ControlEvent::airbrake, "0 to 1")
+      .def_property_readonly("wheel_brake", &mpi::ControlEvent::wheel_brake, "0 to 1")
+      .def_property_readonly("throttle", &mpi::ControlEvent::throttle,
+                             "Throttle lever, 0 to 1; 1 also above 100%, see EngineSync.afterburner")
+      .def_property_readonly("controls", [](const mpi::ControlEvent &e) {
+        return py::bytes(reinterpret_cast<const char *>(e.controls), sizeof(e.controls));
+      }, "The seven control bytes as sent")
+      .def_readonly("engines", &mpi::ControlEvent::engines);
+
   py::enum_<mpi::SeekerSource>(mpi, "SeekerSource")
       .value("Weapon", mpi::SeekerWeapon)
       .value("Aircraft", mpi::SeekerAircraft)
@@ -244,7 +286,9 @@ void PyBattleMessages::include(py::module_ &m) {
       .def_readonly("source", &mpi::SeekerEvent::source)
       .def_readonly("eid", &mpi::SeekerEvent::eid)
       .def_readonly("unit", &mpi::SeekerEvent::unit)
-      .def_readonly("head_f", &mpi::SeekerEvent::head_f)
+      .def_readonly("lost_for", &mpi::SeekerEvent::lost_for,
+                    "Weapon only: seconds since the seeker lost its target; 0 while locked and before the first lock")
+      .def_readonly("flight_time", &mpi::SeekerEvent::flight_time, "Weapon only: seconds since launch")
       .def_readonly("head_b", &mpi::SeekerEvent::head_b)
       .def_readonly("bits", &mpi::SeekerEvent::bits)
       .def_property_readonly("data", [](const mpi::SeekerEvent &e) {
@@ -261,9 +305,15 @@ void PyBattleMessages::include(py::module_ &m) {
       .def_property_readonly("range", [](const mpi::SeekerEvent &e) { return mpi::DecodeSeeker(e).range; },
                              "Radar seeker range in metres (0 to 15% above the true distance)")
       .def_property_readonly("target_pos", [](const mpi::SeekerEvent &e) { return mpi::DecodeSeeker(e).target_pos; },
-                             "Radar seeker's estimate of the target position, world axes");
+                             "Radar seeker's estimate of the target position, world axes; for the 895-bit block "
+                             "of an aircraft, the target the missile gets at launch")
+      .def_property_readonly("ir_state", [](const mpi::SeekerEvent &e) { return mpi::DecodeSeeker(e).ir_state; },
+                             "518-bit aircraft block: 0 no lock, 2 a new lock, 3 and 4 lock held")
+      .def_property_readonly("lock_time", [](const mpi::SeekerEvent &e) { return mpi::DecodeSeeker(e).lock_time; },
+                             "518-bit aircraft block: battle time in seconds of the last lock, None before the first");
 
   bind_readonly_vector_no_contain<std::pmr::vector<mpi::SeekerEvent>>(m, "SeekerEventList");
+  bind_readonly_vector_no_contain<std::pmr::vector<mpi::ControlEvent>>(m, "ControlEventList");
   bind_readonly_vector_no_contain<std::pmr::vector<mpi::SensorEvent>>(m, "SensorEventList");
   bind_readonly_vector_no_contain<std::pmr::vector<mpi::DesignationEvent>>(m, "DesignationEventList");
 
@@ -273,6 +323,8 @@ void PyBattleMessages::include(py::module_ &m) {
   bind_readonly_vector_no_contain<std::pmr::vector<mpi::HitDirection>>(m, "HitDirectionList");
   bind_readonly_vector_no_contain<std::pmr::vector<mpi::HitExplosion>>(m, "HitExplosionList");
   bind_readonly_vector_no_contain<std::pmr::vector<mpi::ShotEvent>>(m, "ShotEventList");
+  bind_readonly_vector_no_contain<std::pmr::vector<mpi::SpotEvent>>(m, "SpotEventList");
+  bind_readonly_vector_no_contain<std::pmr::vector<mpi::CockpitEvent>>(m, "CockpitEventList");
 
   py::class_<mpi::AwardMessage, mpi::IBattleMessage, std::unique_ptr<mpi::AwardMessage, py::nodelete>>(mpi,
                                                                                                        "AwardMessage")

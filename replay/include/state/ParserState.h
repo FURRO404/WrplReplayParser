@@ -136,6 +136,7 @@ public:
   float sea_level = 0.f;
   net::CNetwork conn{this};
   mpi::GeneralObject main_dispatch{this};
+  mpi::LocalClientObject local_client{this};
   net_delta_t NetDelta{allocator.getMem()};
   std::pmr::vector<MPlayer> players{get_allocator()};
   ecs::EntityManager g_entity_mgr{this}; // this order is required as g_entity_mgr needs to be destroyed before players
@@ -160,6 +161,9 @@ public:
   std::pmr::vector<mpi::SensorEvent> SensorEvents{get_allocator()};
   std::pmr::vector<mpi::DesignationEvent> DesignationEvents{get_allocator()};
   std::pmr::vector<mpi::SeekerEvent> SeekerEvents{get_allocator()};
+  std::pmr::vector<mpi::ControlEvent> ControlEvents{get_allocator()};
+  std::pmr::vector<mpi::SpotEvent> SpotEvents{get_allocator()};
+  std::pmr::vector<mpi::CockpitEvent> CockpitEvents{get_allocator()};
   // missionArea1 owns the ptrs
   std::pmr::vector<ObjectRewindState<MissionArea *, false, true> *> missionAreas1{get_allocator()};
   std::pmr::vector<ObjectRewindState<MissionArea *, false> *> missionAreas2{get_allocator()};

@@ -140,6 +140,43 @@ namespace mpi {
     TargetDesignationControlState state{};
   };
 
+  /// One engine of an aircraft at one flight-model sync.
+  struct EngineSync {
+    uint8_t state = 0; ///< 7 while the engine runs, 8 once it has stopped; 0 and 6 occur for short times
+    /// Afterburner throttle of a jet, 1.0 to 1.1, sent only while above 1.0. A prop never
+    /// sends it, also at WEP.
+    std::optional<float> afterburner{};
+    /// Sent only while below 1.0. It falls in steps when the engine is hit and is 0 once
+    /// the engine has stopped: the engine's health.
+    std::optional<float> health{};
+    /// 0 to 255, always 0 on a jet. On a prop they open as the coolant gets hot: the
+    /// radiator flaps.
+    uint8_t radiators[2]{};
+  };
+
+  /// The pilot's controls and the engines of one aircraft at one flight-model sync.
+  struct ControlEvent {
+    uint32_t time_ms = 0;
+    unit::Unit *unit = nullptr;
+    bool on_ground = false;
+    /// The seven control bytes as sent; bytes 3, 4 and 6 have only been seen as 0.
+    uint8_t controls[7]{};
+    std::vector<EngineSync> engines{};
+
+    /// Stick and pedals, -1 to 1 in steps of 1/7, sign as sent. Pitch is positive for a pull.
+    float pitch() const { return ((controls[0] & 15) - 8) / 7.f; }
+    float roll() const { return ((controls[1] >> 4) - 8) / 7.f; }
+    float rudder() const { return ((controls[1] & 15) - 8) / 7.f; }
+    /// 0 to 1 in steps of 1/7.
+    float flaps() const { return ((controls[0] >> 4) & 7) / 7.f; }
+    /// 0 to 1 in steps of 1/15.
+    float airbrake() const { return (controls[2] & 15) / 15.f; }
+    float wheel_brake() const { return (controls[2] >> 4) / 15.f; }
+    /// The throttle lever, 0 to 1 in steps of 1/15. Above 100% it stays at 1: see
+    /// EngineSync::afterburner.
+    float throttle() const { return (controls[5] & 15) / 15.f; }
+  };
+
   enum SeekerSource : uint8_t {
     SeekerWeapon = 0, ///< a guided store in flight, from WeaponSync
     SeekerAircraft = 1, ///< the seeker of a store still on an aircraft, from FMSync
@@ -152,7 +189,11 @@ namespace mpi {
     SeekerSource source = SeekerWeapon;
     ecs::EntityId eid{}; ///< the store, for SeekerWeapon
     unit::Unit *unit = nullptr; ///< the carrier, for SeekerAircraft and SeekerGround
-    float head_f = 0; ///< SeekerWeapon only: the float before the block
+    /// SeekerWeapon only: seconds since the seeker lost its target, 0 while it holds a lock
+    /// and before its first lock. A lock on a flare counts as a lock.
+    float lost_for = 0;
+    /// SeekerWeapon only: seconds since launch, in steps of 1/48 s.
+    std::optional<float> flight_time{};
     bool head_b = false; ///< SeekerWeapon only: the bit before the block
     uint32_t bits = 0;
     /// The bits as BitStream::ReadBits gives them: whole bytes first, the last
@@ -160,9 +201,10 @@ namespace mpi {
     std::vector<uint8_t> data{};
   };
 
-  /// The decoded fields of a SeekerWeapon block. The block length tells the seeker:
-  /// 607 bits radar, 639 bits radar at the change from search to track, 283 bits IR.
-  /// Other lengths (seekers of stores still on an aircraft) are not decoded.
+  /// The decoded fields of a seeker block. The block length tells the seeker. Of a store in
+  /// flight: 607 bits radar, 639 bits radar at the change from search to track, 283 bits IR.
+  /// Of a store still on an aircraft: 518 bits (IR, or no target), 599 bits (radar, no
+  /// target) and 895 bits (radar target); only some of their fields are known.
   struct SeekerState {
     bool decoded = false;
     /// True in track, false in search; empty for an IR seeker, whose lock bit is not known.
@@ -171,8 +213,13 @@ namespace mpi {
     Point3 los{};
     /// Radar only: the seeker's range in metres. It reads 0 to 15% above the true distance.
     std::optional<float> range{};
-    /// Radar only: the seeker's estimate of the target position, world axes.
+    /// Radar only: the seeker's estimate of the target position, world axes. In the 895-bit
+    /// block of an aircraft, the target the missile gets at launch.
     std::optional<Point3> target_pos{};
+    /// 518-bit aircraft block: 0 no lock (also after each launch), 2 a new lock, 3 and 4 lock held.
+    std::optional<uint8_t> ir_state{};
+    /// 518-bit aircraft block: battle time in seconds of the last seeker lock; empty before the first.
+    std::optional<float> lock_time{};
   };
 
   SeekerState DecodeSeeker(const SeekerEvent &ev);

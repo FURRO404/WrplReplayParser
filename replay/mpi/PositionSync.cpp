@@ -191,7 +191,21 @@ static T SeekerValue(const mpi::SeekerEvent &ev, uint32_t at) {
 
 mpi::SeekerState mpi::DecodeSeeker(const SeekerEvent &ev) {
   SeekerState st{};
-  if (ev.source != SeekerWeapon || ev.data.size() < BITS_TO_BYTES(ev.bits))
+  if (ev.data.size() < BITS_TO_BYTES(ev.bits))
+    return st;
+  if (ev.source == SeekerAircraft) {
+    if (ev.bits == 518) {
+      st.ir_state = (SeekerByte(ev, 43) >> 5) & 7;
+      // -FLT_MAX until the seeker first locks
+      float t = SeekerValue<float>(ev, 50);
+      if (t > -1e30f)
+        st.lock_time = t;
+    } else if (ev.bits == 895) {
+      st.target_pos = Point3(SeekerValue<float>(ev, 83), SeekerValue<float>(ev, 115), SeekerValue<float>(ev, 147));
+    }
+    return st;
+  }
+  if (ev.source != SeekerWeapon)
     return st;
   uint32_t los_at, extra = 0;
   // Bits 8-10: 111 track, 001 search; 100 in the 639-bit block, sent once as the seeker
@@ -254,7 +268,8 @@ bool FMSync(ParserState &state, BitStream &bs) {
           auto unit = ref->AsAircraft();
           if (!unit)
             return false;
-          bool fVar41LessThan0p5 = bs.ReadBit();
+          mpi::ControlEvent control{state.curr_time_ms, unit};
+          control.on_ground = bs.ReadBit();
           uint32_t some_uint;
           bs.Read(some_uint);
           bool _0x7330_val = bs.ReadBit();
@@ -317,40 +332,29 @@ bool FMSync(ParserState &state, BitStream &bs) {
           bs.Read(vals_4);
           Point3 vel;
           netutils::unpack_velocity(vals_4, vel, 500);
-          uint64_t
-            val_5; // holds lots of important data, more like a char[7] instead of a uint64_t, data is read as bytes
           bs.AlignReadToByteBoundary();
-          bs.ReadBits(reinterpret_cast<uint8_t *>(&val_5), 0x38);
+          bs.ReadBits(control.controls, 0x38);
           uint8_t number_of_engines;
           bs.Read(number_of_engines);
           if (number_of_engines > 0xf)
             return false; // "FMsync: numEngines >= MAX_AIRCRAFT_MOTORS"
-          for (int i = 0; i < number_of_engines; i++) {
-            bool is_some_data_serialized = bs.ReadBit();
-            uint8_t v;
-            bs.Read(v);
-            float probably_engine_power = -1;
-            float packed_v_2 = -1;
-            if (is_some_data_serialized) {
-              int16_t temp_packed;
-              bs.Read(temp_packed);
-              probably_engine_power = netutils::UNPACKS<int16_t>(temp_packed, 1.1f);
+          control.engines.resize(number_of_engines);
+          for (auto &engine: control.engines) {
+            bool has_afterburner = bs.ReadBit();
+            RET_FAIL(bs.Read(engine.state));
+            if (has_afterburner) {
+              int16_t packed;
+              RET_FAIL(bs.Read(packed));
+              engine.afterburner = netutils::UNPACKS<int16_t>(packed, 1.1f);
             }
-
-            auto is_some_packed_2 = bs.ReadBit();
-            if (is_some_packed_2) {
-              int8_t v_;
-              bs.Read(v_);
-              packed_v_2 = netutils::UNPACKS<int8_t>(v_, 1.0);
+            if (bs.ReadBit()) {
+              int8_t packed;
+              RET_FAIL(bs.Read(packed));
+              engine.health = netutils::UNPACKS<int8_t>(packed, 1.0);
             }
-
-            uint8_t v10;
-            uint8_t v11;
-            bs.Read(v10);
-            bs.Read(v11);
-            float v10f = netutils::UNPACK<uint8_t>(v10, 1.0);
-            float v11f = netutils::UNPACK<uint8_t>(v11, 1.0);
+            RET_FAIL(bs.Read(engine.radiators));
           }
+          state.ControlEvents.push_back(std::move(control));
           uint8_t sensorsCount;
           bs.Read(sensorsCount);
           RET_FAIL(sensorsCount <= SENSORS_COUNT);
@@ -962,7 +966,9 @@ bool ParseWeapon(ParserState &state, const BitStream &bs, get_weapon_cb cb) {
       uint16_t sz;
       RET_FAIL(bs.Read(sz));
       mpi::SeekerEvent ev{state.curr_time_ms, mpi::SeekerWeapon, eid};
-      ev.head_f = vv;
+      ev.lost_for = vv;
+      if (flags & 1)
+        ev.flight_time = sf1;
       ev.head_b = vv2;
       ReadSeekerBits(state, bs, sz, ev);
     } else if (resyncSaclosGuidanceParams) {
