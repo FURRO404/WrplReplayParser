@@ -3,6 +3,7 @@
 #include "Unit.h"
 #include "danet/dag_netUtils.h"
 #include "math/dag_mathAng.h"
+#include <cstring>
 
 bool separateServerSideDetection_g = true;
 bool resyncSaclosGuidanceParams = true; // actually known to be true, hopefully
@@ -16,8 +17,8 @@ bool SensorsControlStates::deserialize(BitStream &bs) {
   sensor_type >>= 4;
   switch (sensor_type) {
     case 1: {
-      bool bool_2 = bs.ReadBit();
-      if (!bool_2)
+      has_state = bs.ReadBit();
+      if (!has_state)
         return true;
       int16_t bit_packed;
       int16_t packed_val_1;
@@ -164,6 +165,55 @@ static void ReadSeekerBits(ParserState &state, const BitStream &bs, uint32_t bit
     state.SeekerEvents.push_back(std::move(ev));
   else
     bs.IgnoreBits(bits);
+}
+
+// Seeker fields are read MSB first in each byte; a multi-byte number is little-endian
+// from its bit offset. The last partial byte of the block is right-aligned.
+static uint8_t SeekerByte(const mpi::SeekerEvent &ev, uint32_t at) {
+  const uint32_t full = ev.bits / 8 * 8, rem = ev.bits % 8;
+  uint8_t out = 0;
+  for (uint32_t i = at; i < at + 8; i++) {
+    uint8_t bit = i < full ? (ev.data[i / 8] >> (7 - i % 8)) & 1 : (ev.data[i / 8] >> (rem - 1 - (i - full))) & 1;
+    out = (uint8_t) (out << 1 | bit);
+  }
+  return out;
+}
+
+template <typename T>
+static T SeekerValue(const mpi::SeekerEvent &ev, uint32_t at) {
+  uint8_t raw[sizeof(T)];
+  for (uint32_t i = 0; i < sizeof(T); i++)
+    raw[i] = SeekerByte(ev, at + 8 * i);
+  T out;
+  memcpy(&out, raw, sizeof(T));
+  return out;
+}
+
+mpi::SeekerState mpi::DecodeSeeker(const SeekerEvent &ev) {
+  SeekerState st{};
+  if (ev.source != SeekerWeapon || ev.data.size() < BITS_TO_BYTES(ev.bits))
+    return st;
+  uint32_t los_at, extra = 0;
+  // Bits 8-10: 111 track, 001 search; 100 in the 639-bit block, sent once as the seeker
+  // goes to track, which then has 32 bits of unknown meaning before the 607-bit layout.
+  uint8_t mode = (SeekerByte(ev, 8) >> 5) & 7;
+  if (ev.bits == 607 || ev.bits == 639) {
+    extra = ev.bits == 639 ? 32 : 0;
+    if (ev.bits == 607 && (mode == 7 || mode == 1))
+      st.tracking = mode == 7;
+    else if (ev.bits == 639 && mode == 4)
+      st.tracking = true;
+    st.target_pos = Point3(SeekerValue<float>(ev, 11), SeekerValue<float>(ev, 43), SeekerValue<float>(ev, 75));
+    st.range = (float) SeekerValue<uint16_t>(ev, 454 + extra);
+    los_at = 340 + extra;
+  } else if (ev.bits == 283) {
+    los_at = 58;
+  } else {
+    return st;
+  }
+  st.los = Point3(SeekerValue<int16_t>(ev, los_at), SeekerValue<int16_t>(ev, los_at + 16), SeekerValue<int16_t>(ev, los_at + 32)) / 32767.f;
+  st.decoded = true;
+  return st;
 }
 
 void DeserializeSeekerData(ParserState &state, BitStream &bs, mpi::SeekerSource source, unit::Unit *unit) {
