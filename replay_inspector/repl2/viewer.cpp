@@ -91,14 +91,6 @@ void* operator new[](std::size_t size, const std::nothrow_t&) noexcept {
 }*/
 
 
-DECL_PULL_VAR(query_draw_units);
-
-volatile size_t inspector_pulls = ecs_pull_query_draw_units;
-
-
-// static float current_look_direction;
-
-
 #ifdef PARSER_ENABLE_INSPECTOR_CURL
 void download_replay_internal(downloadFileCtx *ctx, uint64_t session_id) {
   ctx->done.store(false);

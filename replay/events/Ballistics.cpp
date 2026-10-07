@@ -5,6 +5,7 @@
 #include <ioSys/dag_dataBlock.h>
 
 #include <cmath>
+#include "mpi/Ballistics.h"
 #include <unordered_map>
 
 // Flight of an unguided store, rebuilt from the state it left the pylon with.
@@ -18,80 +19,69 @@
 // The result goes into a history of its own, never into positions: a reconstruction
 // must not be mistaken for a recording.
 namespace unit {
+  constexpr float GRAVITY = 9.80665f;
+  constexpr float RHO0 = 1.225f;
+  constexpr uint32_t STEP_MS = 10;     // integration step
+  constexpr float STEP_S = float(STEP_MS) * 0.001f;
+  constexpr uint32_t SAMPLE_MS = 100;  // spacing of the published samples
 
-  namespace {
-    constexpr float GRAVITY = 9.80665f;
-    constexpr float RHO0 = 1.225f;
-    constexpr uint32_t STEP_MS = 10;     // integration step
-    constexpr float STEP_S = float(STEP_MS) * 0.001f;
-    constexpr uint32_t SAMPLE_MS = 100;  // spacing of the published samples
 
-    struct BallisticParams {
-      float mass = 0.f;
-      float area = 0.f;
-      float cx = 0.f;
-      float force = 0.f;      // motor thrust, zero for a bomb
-      float time_fire = 0.f;  // burn time
-      float mass_end = 0.f;   // mass once the motor has burnt out
-    };
 
-    // Standard atmosphere, referenced to sea level. Drag on a bomb dropped from four
-    // kilometres is a fifth weaker than at sea level, which is worth more than the
-    // sampling error - so the height fed in has to be above the sea, not above the
-    // origin of the map: on Pradesh the two differ by 920 m, which is 8.5% of density.
-    float air_density(float height) {
-      height = height < -500.f ? -500.f : (height > 20000.f ? 20000.f : height);
-      return RHO0 * powf(1.f - 2.25577e-5f * height, 4.25588f);
+  // Standard atmosphere, referenced to sea level. Drag on a bomb dropped from four
+  // kilometres is a fifth weaker than at sea level, which is worth more than the
+  // sampling error - so the height fed in has to be above the sea, not above the
+  // origin of the map: on Pradesh the two differ by 920 m, which is 8.5% of density.
+  float air_density(float height) {
+    height = height < -500.f ? -500.f : (height > 20000.f ? 20000.f : height);
+    return RHO0 * powf(1.f - 2.25577e-5f * height, 4.25588f);
+  }
+
+  bool BallisticParams::tryLoad(const DataBlock *blk, const char *section) {
+    const DataBlock *body = blk->getBlockByName(section);
+    if (!body)
+      return false;
+    const float mass_ = body->getReal("mass", 0.f);
+    const float caliber = body->getReal("caliber", 0.f);
+    if (mass <= 0.f || caliber <= 0.f)
+      return false;
+    this->mass = mass_;
+    area = float(M_PI) * caliber * caliber * 0.25f;
+    cx = body->getReal("dragCx", 0.f) * body->getReal("CxK", 1.f);
+    force = body->getReal("force", 0.f);
+    time_fire = body->getReal("timeFire", 0.f);
+    mass_end = body->getReal("massEnd", mass_);
+    // maxSpeed is deliberately ignored. It is not a ceiling on the projectile: the
+    // game itself recorded a ROFS-132 hitting at 456 m/s against a maxSpeed of 355,
+    // and clamping to it loses 150 metres of range.
+    return true;
+  }
+
+  const BallisticParams *BallisticParams::lookupBallisticData(ParserState &state, const std::string &weapon_id) {
+    auto &cache = state.ballistics_cache;
+    auto it = cache.find(weapon_id);
+    if (it != cache.end())
+      return it->second.mass > 0.f ? &it->second : nullptr;
+    BallisticParams params{};
+    static const char *const kinds[][2] = {{"bombguns", "bomb"}, {"rocketguns", "rocket"}};
+    for (const auto &kind : kinds) {
+      DataBlock blk{};
+      const std::string path = std::string("gamedata/weapons/") + kind[0] + "/" + weapon_id + ".blk";
+      // ROBUST: most ids have no gun blk at all (smoke grenades, countermeasures),
+      // and a plain load treats a missing file as fatal.
+      if (!dblk::load(blk, path, dblk::ReadFlags(dblk::ReadFlag::ROBUST)))
+        continue;
+      if (params.tryLoad(&blk, kind[1]))
+        break;
+      params = BallisticParams{};
     }
-
-    bool read_params(const DataBlock &blk, const char *section, BallisticParams &out) {
-      const DataBlock *body = blk.getBlockByName(section);
-      if (!body)
-        return false;
-      const float mass = body->getReal("mass", 0.f);
-      const float caliber = body->getReal("caliber", 0.f);
-      if (mass <= 0.f || caliber <= 0.f)
-        return false;
-      out.mass = mass;
-      out.area = float(M_PI) * caliber * caliber * 0.25f;
-      out.cx = body->getReal("dragCx", 0.f) * body->getReal("CxK", 1.f);
-      out.force = body->getReal("force", 0.f);
-      out.time_fire = body->getReal("timeFire", 0.f);
-      out.mass_end = body->getReal("massEnd", mass);
-      // maxSpeed is deliberately ignored. It is not a ceiling on the projectile: the
-      // game itself recorded a ROFS-132 hitting at 456 m/s against a maxSpeed of 355,
-      // and clamping to it loses 150 metres of range.
-      return true;
-    }
-
-    // Cached because a salvo fires the same store many times over.
-    const BallisticParams *lookup(const std::string &weapon_id) {
-      static std::unordered_map<std::string, BallisticParams> cache;
-      auto it = cache.find(weapon_id);
-      if (it != cache.end())
-        return it->second.mass > 0.f ? &it->second : nullptr;
-      BallisticParams params{};
-      static const char *const kinds[][2] = {{"bombguns", "bomb"}, {"rocketguns", "rocket"}};
-      for (const auto &kind : kinds) {
-        DataBlock blk{};
-        const std::string path = std::string("gamedata/weapons/") + kind[0] + "/" + weapon_id + ".blk";
-        // ROBUST: most ids have no gun blk at all (smoke grenades, countermeasures),
-        // and a plain load treats a missing file as fatal.
-        if (!dblk::load(blk, path.c_str(), dblk::ReadFlags(dblk::ReadFlag::ROBUST)))
-          continue;
-        if (read_params(blk, kind[1], params))
-          break;
-        params = BallisticParams{};
-      }
-      auto &slot = cache.emplace(weapon_id, params).first->second;
-      return slot.mass > 0.f ? &slot : nullptr;
-    }
-  } // namespace
+    auto &slot = cache.emplace(weapon_id, params).first->second;
+    return slot.mass > 0.f ? &slot : nullptr;
+  }
 
   // powered:false for a store that was let go rather than fired. A jettisoned missile
   // keeps its motor unlit, so applying the thrust from its blk would fly it away under
   // its own power instead of dropping it.
-  void buildBallisticArc(Rocket &store, bool powered, float sea_level) {
+  void buildBallisticArc(ParserState &state, Rocket &store, bool powered, float sea_level) {
     if (!store.ballistic_positions.history().empty())
       return;
     // A streamed store needs nothing; without an end time there is nothing to
@@ -100,7 +90,7 @@ namespace unit {
       return;
     if (store.destroyed_at_ms == 0xFFFFFFFFu || store.destroyed_at_ms <= store.created_at_ms)
       return;
-    const BallisticParams *pr = lookup(store.weapon_obj->weapon_name);
+    const BallisticParams *pr = BallisticParams::lookupBallisticData(state, store.weapon_obj->weapon_name);
     if (!pr)
       return; // smoke grenades and countermeasures have no gun blk and need no arc
 

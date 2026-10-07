@@ -16,7 +16,7 @@
 #include "StateRewinder.h"
 #include "memory/dag_memBase.h"
 #include "StateRewinder.h"
-
+#include "mpi/Ballistics.h"
 namespace unit {
   class Unit;
 }
@@ -98,6 +98,11 @@ protected:
   uint32_t state_update_start_time_ms{};
   // holds all the current updates for the current time_ms
   std::pmr::vector<RewindRef> curr_ms_rewind_refs{&allocator};
+  // used by ballisitics loader as cache
+  std::unordered_map<std::string, unit::BallisticParams> ballistics_cache;
+  std::unordered_map<std::string, std::vector<unit::BulletSet>> bullet_set_cache;
+  friend unit::BallisticParams;
+  friend unit::BulletSet;
 
 #if LDAG_DBGLEVEL > 0
   void registerStateChange(IObjectRewindState *state, uint32_t back, uint32_t curr);

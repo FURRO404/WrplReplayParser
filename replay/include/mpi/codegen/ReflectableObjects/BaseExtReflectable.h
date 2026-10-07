@@ -7,6 +7,7 @@ protected:
   void applyMpiMessage(const mpi::Message *m) override;
 public:
   ObjectRewindState<danet::CameraData, false, false, false> camera_data{};
+  unit::Unit* owner_unit{};
 public:
   DECL_REFLECTION(BaseExtReflectable, danet::ReflectableObject)
   void drawObject() const override;

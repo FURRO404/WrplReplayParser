@@ -116,6 +116,19 @@ inline const char *storeTypeName(StoreType kind) {
   }
 }
 
+template<>
+struct fmt::formatter<StoreType> {
+public:
+  constexpr auto parse(format_parse_context &ctx) { return ctx.begin(); }
+  template<typename Context>
+  constexpr auto format(StoreType const &val, Context &ctx) const {
+    const char *str = storeTypeName(val);
+    return format_to(ctx.out(), "{}({})", static_cast<int>(val), str);
+  }
+};
+
+
+
 struct Rocket {
   ObjectRewindState<SpaceTimeEuler, false, false, false> positions{};
   /// Flight rebuilt from the release state, for stores the server never streamed.

@@ -121,6 +121,7 @@ void PyCodegenObjects::include(py::module_ &m) {
   ;
   py::class_<BaseExtReflectable, danet::ReflectableObject, std::unique_ptr<BaseExtReflectable, py::nodelete>>(mpi, "BaseExtReflectable")
     .def_readonly("camera_data", &BaseExtReflectable::camera_data)
+    .def_readonly("owner_unit", &BaseExtReflectable::owner_unit)
     .def_readonly("isAlternativeShotFreq", &BaseExtReflectable::isAlternativeShotFreq)
     .def_readonly("brokenTurretDriveSpeed", &BaseExtReflectable::brokenTurretDriveSpeed)
     .def_readonly("brokenTurretDriveMult", &BaseExtReflectable::brokenTurretDriveMult)

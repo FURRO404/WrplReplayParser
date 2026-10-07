@@ -823,7 +823,7 @@ bool GMSync(ParserState &state, BitStream &bs) {
 // so ask for the one the list is named after first and then for the rest. Payload
 // and jettisoned were asked for by nobody at all, which cost such a store its whole
 // trajectory.
-static Rocket *getAnyStore(ParserState &state, ecs::EntityId eid) {
+static Rocket *getAnyStoreImpl(ParserState &state, ecs::EntityId eid) {
   if (auto *r = state.g_entity_mgr.getNullable<Rocket>(eid, ECS_HASH("rocket_component")))
     return r;
   if (auto *b = state.g_entity_mgr.getNullable<Rocket>(eid, ECS_HASH("bomb_component")))
@@ -835,25 +835,33 @@ static Rocket *getAnyStore(ParserState &state, ecs::EntityId eid) {
   return state.g_entity_mgr.getNullable<Rocket>(eid, ECS_HASH("torpedo_component"));
 }
 
+static Rocket * getAnyStore(ParserState &state, ecs::EntityId eid, StoreType actual) {
+  auto ret = getAnyStoreImpl(state, eid);
+  if (ret) {
+    LOGE("entity '{}' has rocket of type {} but we tried to get {}", eid, ret->type, actual);
+  }
+  return ret;
+}
+
 
 Rocket *getRocket(ParserState &state, ecs::EntityId eid) {
   if (auto *r = state.g_entity_mgr.getNullable<Rocket>(eid, ECS_HASH("rocket_component")))
     return r;
-  return getAnyStore(state, eid);
+  return getAnyStore(state, eid, StoreType::Rocket);
 }
 
 
 Rocket *getBomb(ParserState &state, ecs::EntityId eid) {
   if (auto *b = state.g_entity_mgr.getNullable<Rocket>(eid, ECS_HASH("bomb_component")))
     return b;
-  return getAnyStore(state, eid);
+  return getAnyStore(state, eid, StoreType::Bomb);
 }
 
 
 Rocket *getTorpedo(ParserState &state, ecs::EntityId eid) {
   if (auto *t = state.g_entity_mgr.getNullable<Rocket>(eid, ECS_HASH("torpedo_component")))
     return t;
-  return getAnyStore(state, eid);
+  return getAnyStore(state, eid, StoreType::Torpedo);
 }
 
 typedef Rocket *(*get_weapon_cb)(ParserState &state, ecs::EntityId eid);

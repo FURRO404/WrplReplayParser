@@ -5,11 +5,7 @@
 #include "ioSys/dag_dataBlock.h"
 
 namespace {
-  // water_level of the level file is the zero of the altitude packing, and the level
-  // files ship in aces.vromfs, which the parser mounts anyway. Everything that reasons
-  // about height above the sea - the atmosphere the ballistics integrate through, for
-  // one - needs it: on Pradesh the sea sits at +920, so a y of 1300 is 380 m up, not
-  // 1300. ROBUST because a level file may be missing.
+  // warthunder offsets all y offsets by the sea level. on most maps, this is 0, but some, like Pradesh, have a difference (last seen as 920)
   float read_sea_level(const char *level_path) {
     if (!level_path || !*level_path)
       return 0.f;

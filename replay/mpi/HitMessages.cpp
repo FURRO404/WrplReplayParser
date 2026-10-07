@@ -13,51 +13,18 @@
 // the offender unit, which cannot wait: a uid is reused across respawns, so it only
 // maps to a vehicle at the moment the packet is read.
 //
-// Field order comes from the dev build decompile, from Unit::sendHitEffects and from
-// dm::HitVisualization::read plus its writer. Where the two disagreed with the data,
-// the data won and the comment says so.
 namespace mpi {
 
   namespace {
-    constexpr float I16_SCALE = 1.f / 32767.f;
-    constexpr float I8_SCALE = 1.f / 127.f;
-
     // Quantization ceiling of the local hit point. 262.5 is used for ships
     // (game unitType 5), 20 m for ground and air.
     constexpr float LOCAL_POS_MAX = 20.f;
 
-    bool read_i16_scaled(const BitStream *bs, float scale, float &out) {
-      int16_t v = 0;
-      if (!bs->Read(v))
-        return false;
-      out = float(v) * I16_SCALE * scale;
-      return true;
-    }
-
-    bool read_i8_scaled(const BitStream *bs, float scale, float &out) {
-      int8_t v = 0;
-      if (!bs->Read(v))
-        return false;
-      out = float(v) * I8_SCALE * scale;
-      return true;
-    }
-
-    // netutils::pack_dir: 11 bits azimuth, 11 bits elevation, two sign bits.
-    bool read_packed_dir(const BitStream *bs, Point3 &out) {
-      uint8_t packed[3]{};
-      if (!bs->ReadBits(packed, 24))
-        return false;
-      netutils::unpack_dir(packed, out);
-      return true;
-    }
-
     // 0xF15F body is byte aligned raw float32, so it is read by offset, not by bits.
     template<typename T>
     bool raw_at(const BitStream &bs, uint32_t offset, T &out) {
-      if (offset + sizeof(T) > bs.GetNumberOfBytesUsed())
-        return false;
-      memcpy(&out, bs.GetData() + offset, sizeof(T));
-      return true;
+      bs.SetReadOffset(BYTES_TO_BITS(offset));
+      return bs.Read(out);
     }
 
     // netutils::read_idx is a plain LEB128, not the danet compressed form. Its
@@ -139,27 +106,25 @@ namespace mpi {
       // bytes, which gives the observed body lengths of 227 / 235 / 243 bits.
       // Only the point and the first direction are published; the rest is read to
       // reach the end of the body, which is what proves the layout is right.
-      int16_t p[3]{};
       int skip_i = 0;
-      float skip_f = 0.f;
       Point3 unused_dir{};
       bool skip_b = false;
       bool ok = body.ReadZigZag(skip_i);
-      ok = ok && body.Read(p[0]) && body.Read(p[1]) && body.Read(p[2]);
-      hit.local_pos = Point3(float(p[0]), float(p[1]), float(p[2])) * (I16_SCALE * LOCAL_POS_MAX);
-      ok = ok && read_packed_dir(&body, hit.local_dir);
-      ok = ok && read_packed_dir(&body, unused_dir);
-      ok = ok && body.ReadZigZag(skip_i);
-      ok = ok && body.Read(skip_b) && body.Read(skip_b) && body.Read(skip_b);
-      ok = ok && read_i16_scaled(&body, 20.f, skip_f);
-      ok = ok && read_i16_scaled(&body, 20.f, skip_f);
-      ok = ok && read_i16_scaled(&body, 1.f, skip_f);
-      ok = ok && read_i16_scaled(&body, 100.f, skip_f);
-      ok = ok && body.ReadZigZag(skip_i);
-      ok = ok && read_i8_scaled(&body, 5.f, skip_f);
-      ok = ok && body.ReadZigZag(skip_i);
-      ok = ok && read_i8_scaled(&body, PI, skip_f);
-      ok = ok && read_i8_scaled(&body, PI, skip_f);
+      ok &= netutils::read_vector(body, hit.local_pos, LOCAL_POS_MAX);
+      ok &= netutils::read_dir(body, hit.local_dir);
+      ok &= netutils::read_dir(body, unused_dir);
+      ok &= body.ReadZigZag(skip_i);
+      ok &= body.Read(skip_b) && body.Read(skip_b) && body.Read(skip_b);
+      int16_t i16 = 0;
+      int8_t i8 = 0;
+      ok &= body.Read(i16); // netutils::UNPACKS<int16_t>(i16, 20.f);
+      ok &= body.Read(i16); // netutils::UNPACKS<int16_t>(i16, 1.f);
+      ok &= body.Read(i16); // netutils::UNPACKS<int16_t>(i16, 100.f);
+      ok &= body.ReadZigZag(skip_i);
+      ok &= body.Read(i8); // netutils::UNPACKS<int8_t>(i8, 5.f);
+      ok &= body.ReadZigZag(skip_i);
+      ok &= body.Read(i8); // netutils::UNPACKS<int8_t>(i8, PI);
+      ok &= body.Read(i8); // netutils::UNPACKS<int8_t>(i8, PI);
       if (!ok)
         return false;
       // Body is padded to a byte, so only up to 7 bits may be left.
@@ -194,21 +159,21 @@ namespace mpi {
         return false;
       uint32_t type = 0, type_size = 0;
       bool ok = raw_at(body, 0, analysis.version);
-      ok = ok && raw_at(body, 2, analysis.time_s);
-      ok = ok && read_uleb(body, 6, type, type_size);
+      ok &= raw_at(body, 2, analysis.time_s);
+      ok &= read_uleb(body, 6, type, type_size);
       if (!ok)
         return false;
       analysis.projectile_type = type;
       // Every Point3 in the body is SIMD padded to 16 bytes.
       const uint32_t p = 6 + type_size;
       ok = raw_at(body, p, analysis.projectile_uid);
-      ok = ok && raw_point3(body, p + 16, analysis.pos);
-      ok = ok && raw_point3(body, p + 32, analysis.dir);
-      ok = ok && raw_point3(body, p + 48, analysis.local_pos);
-      ok = ok && raw_point3(body, p + 64, analysis.local_dir);
-      ok = ok && raw_at(body, p + 80, analysis.speed);
-      ok = ok && raw_at(body, p + 84, analysis.travel_distance);
-      ok = ok && raw_at(body, p + 92, analysis.seed);
+      ok &= raw_point3(body, p + 16, analysis.pos);
+      ok &= raw_point3(body, p + 32, analysis.dir);
+      ok &= raw_point3(body, p + 48, analysis.local_pos);
+      ok &= raw_point3(body, p + 64, analysis.local_dir);
+      ok &= raw_at(body, p + 80, analysis.speed);
+      ok &= raw_at(body, p + 84, analysis.travel_distance);
+      ok &= raw_at(body, p + 92, analysis.seed);
       if (!ok)
         return false;
       got_body = true;
@@ -292,23 +257,19 @@ namespace mpi {
         return false;
       got_body = true;
 
-      // Record layouts differ from the dev build decompile: KineticHit carries a
-      // direction and a trailing flag, Ricochet a leading flag. Both were measured
-      // against a hard invariant, the part count of the victim damage model, which
-      // is constant per vehicle and sits right after these lists.
       uint16_t n16 = 0;
       uint8_t n8 = 0;
       bool ok = body.ReadCompressed(n16);
       for (uint16_t i = 0; ok && i < n16; ++i) { // ProjectileEvent
         uint8_t type = 0, unused = 0;
         ok = body.Read(type) && body.Read(unused);
-        ok = ok && skip_float(body, POS_PROPS) && skip_float(body, POS_PROPS) &&
+        ok &= skip_float(body, POS_PROPS) && skip_float(body, POS_PROPS) &&
              skip_float(body, POS_PROPS) && skip_dir(body);
         if (ok && type == 6)
           ok = skip_float(body, EXPLOSION_RADIUS_PROPS);
       }
       int part = 0;
-      ok = ok && body.Read(n8);
+      ok &= body.Read(n8);
       for (uint8_t i = 0; ok && i < n8; ++i) { // KineticHit
         // The record carries no direction; it closes with a float instead.
         ok = body.ReadZigZag(part) && skip_bit(body) && skip_float(body, ANGLE_PROPS) &&
@@ -316,13 +277,13 @@ namespace mpi {
         if (ok)
           outcome.kinetic_parts.push_back(part);
       }
-      ok = ok && body.Read(n8);
+      ok &= body.Read(n8);
       for (uint8_t i = 0; ok && i < n8; ++i) { // CumulativeHit
         ok = body.ReadZigZag(part) && skip_bit(body);
         if (ok)
           outcome.cumulative_parts.push_back(part);
       }
-      ok = ok && body.Read(n8);
+      ok &= body.Read(n8);
       for (uint8_t i = 0; ok && i < n8; ++i) { // Ricochet
         // No leading flag, and the same closing float as a KineticHit.
         ok = body.ReadZigZag(part) && skip_dir(body) && skip_float(body, ANGLE_PROPS) &&
@@ -334,7 +295,7 @@ namespace mpi {
 
       // PartState: one presence bit per part of the damage model, eight more bits
       // for the parts whose state came with this hit.
-      ok = ok && body.ReadCompressed(n16);
+      ok &= body.ReadCompressed(n16);
       if (ok)
         outcome.part_count = n16;
       for (uint16_t i = 0; ok && i < n16; ++i) {
@@ -349,7 +310,7 @@ namespace mpi {
         }
       }
 
-      ok = ok && body.ReadCompressed(n16);
+      ok &= body.ReadCompressed(n16);
       for (uint16_t i = 0; ok && i < n16; ++i) { // FireSpawn
         ok = body.ReadZigZag(part) && skip_float(body, POS_PROPS) &&
              skip_float(body, POS_PROPS) && skip_float(body, POS_PROPS) &&

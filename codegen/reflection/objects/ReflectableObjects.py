@@ -138,7 +138,8 @@ class BaseExtReflectable(ReflectableObject):
         Method("void applyMpiMessage(const mpi::Message *m) override;")
     ]
     public = [
-        SVar("ObjectRewindState<danet::CameraData, false, false, false>", "camera_data")
+        SVar("ObjectRewindState<danet::CameraData, false, false, false>", "camera_data"),
+        SVar("unit::Unit*", "owner_unit")
     ]
     isAlternativeShotFreq = Var("bool", 33)
     # name:brokenTurretDriveJammedTime;addr:0x281a670;id:54;flags:0;size:64

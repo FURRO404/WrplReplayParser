@@ -245,32 +245,25 @@ namespace unit {
     // leaves the first level as the container itself: the Pantsir's TKB-1055 stayed
     // 170mm_tkb_1055_container, which has no name of its own and no turret.
     //
-    // Every weapon of every unit comes through here, so the resolved path is cached:
-    // without it the same blk is loaded once per weapon, and twice for a pilon slot,
-    // which is read once for the dedup and again by the Weapon ctor.
-    static std::unordered_map<std::string, std::string> resolved;
-    const auto hit = resolved.find(blk_val);
-    if (hit != resolved.end())
-      return hit->second;
-
+    // readd caching if needed
     std::string out = blk_val;
     // A container pointing at itself would recurse forever, and nothing in the game
     // files rules that out.
     for (int depth = 0; depth < 8; ++depth) {
       DataBlock inner{};
-      if (!dblk::load(inner, out, dblk::ReadFlags(dblk::ReadFlag::ROBUST)) ||
-          !inner.getBool("container", false))
+      if (!dblk::load(inner, out, dblk::ReadFlags(dblk::ReadFlag::ROBUST)) || !inner.getBool("container", false))
         break;
       auto next = inner.getStr("blk", nullptr);
       if (!next || out == next)
         break;
       out = next;
     }
-    resolved.emplace(blk_val, out);
+    // resolved.emplace(blk_val, out);
     return out;
   }
 
-  Weapon::Weapon(const DataBlock *blk, Unit *unit, std::vector<uint16_t> &weapons_count) {
+  Weapon::Weapon(const DataBlock *blk, Unit *unit, std::vector<uint16_t> &weapons_count, ParserState *state) :
+    state(state) {
     auto trigger = blk->getStr("trigger", nullptr);
     auto blk_str = blk->getStr("blk", nullptr);
     auto _emitter = blk->getStr("emitter", nullptr);
@@ -446,7 +439,6 @@ namespace unit {
       std::vector<LauncherInfo> launchers{}; // thats what they technically are idduno deal with it
       // blkPrint(weapon_preset);
       for (int i = 0; i < weapon_preset->blockCount(); i++) {
-        auto curr_preset = weapon_preset->getBlock(i);
         const DataBlock *curr_weapon_slot = nullptr, *curr_weapon_preset = nullptr;
         int tier = -1;
         int slot = -1;
@@ -467,14 +459,14 @@ namespace unit {
                        [](const LauncherInfo &f, const LauncherInfo &s) { return f.order < s.order; });
       this->weapons.reserve(launchers.size());
       for (auto &launcher: launchers) {
-        this->weapons.emplace_back(launcher.blk, this, weapons_count);
+        this->weapons.emplace_back(launcher.blk, this, weapons_count, state);
       }
     } else {
       int WeaponNid = weapon_preset->getNameId("Weapon"), weaponNid = weapon_preset->getNameId("weapon");
       for (int i = 0; i < weapon_preset->blockCount(); i++) {
         auto curr_preset = weapon_preset->getBlock(i);
         if (curr_preset->getBlockNameId() == WeaponNid || curr_preset->getBlockNameId() == weaponNid) {
-          this->weapons.emplace_back(curr_preset, this, weapons_count);
+          this->weapons.emplace_back(curr_preset, this, weapons_count, state);
         }
       }
     }
@@ -510,7 +502,7 @@ namespace unit {
               seen |= w.from_pilon && w.blk_path == path;
             if (seen)
               continue;
-            this->weapons.emplace_back(weap, this, weapons_count);
+            this->weapons.emplace_back(weap, this, weapons_count, state);
             // The ctor can bail out and still leave the object in the vector. Marking
             // such a weapon as a pilon one would make it the fallback of
             // getWeaponFromRef for every unresolved ref of this vehicle, handing out a
