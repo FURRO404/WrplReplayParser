@@ -72,11 +72,11 @@ namespace mpi {
 
   class CameraStateMessage : public Message {
   public:
-    Quat camera_circle_quat{}; // where camera is pointing
-    Point3 camera_offset{}; // camera offset from commander hatch or smg
-    Point3 gun_circle_norm_vector{}; // normalized vector of where the gun circle is pointing
-    uint8_t some_val{};
-    float some_magnitude{};
+    Quat camera_circle_quat{}; // camera rotation; the view direction is (0, 0, 1) rotated by it
+    Point3 camera_offset{}; // camera position minus the unit position, world axes
+    Point3 gun_circle_norm_vector{}; // unit vector of the gun barrel, world axes (not the camera)
+    uint16_t camera_kind{}; // 29 third person, 39 gunner sight, 35 a fixed 9.28x sight
+    float zoom{}; // 1.192 in the normal view, 5 to 25 in a sight
     bool tracking_weapon{};
     ecs::EntityId weapon_eid{};
     CameraStateMessage(IObject * o) : Message(o, MPI_PACKETS::UnitCamera) {}

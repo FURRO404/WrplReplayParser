@@ -136,6 +136,10 @@ void PyReplayState::include(py::module_ &m) {
                   "0xF037: the spotter sees the spotted unit, which gets its red mark on the spotter's screen")
     .def_readonly("controls", &ParserState::ControlEvents,
                   "The pilot's controls and the engines of each aircraft, from the flight-model syncs")
+    .def_readonly("ground_syncs", &ParserState::GroundSyncEvents,
+                  "0xF074: motion, drive, turret angles and weapon state of each ground vehicle, ship and AI gun")
+    .def_readonly("store_syncs", &ParserState::StoreSyncEvents,
+                  "0xF11A: server time and velocity of each missile or rocket in flight")
     .def_readonly("seekers", &ParserState::SeekerEvents,
                   "Seeker blocks of stores in flight, aircraft and ground vehicles; the known ones decoded")
     .def_readonly("shots", &ParserState::ShotEvents,

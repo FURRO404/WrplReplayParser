@@ -757,7 +757,14 @@ void BaseExtReflectable::applyMpiMessage(const mpi::Message *m) {
       Point2 gun_pointer = dir_to_sph_ang(camera_m->gun_circle_norm_vector);
       gun_pointer.x -= PI / 2;
       camera_euler.y = norm_s_ang(camera_euler.y - PI / 2);
-      *camera_data.reserveOne() = {camera_euler, gun_pointer};
+      const Quat &q = camera_m->camera_circle_quat;
+      *camera_data.reserveOne() = {camera_euler,
+                                   gun_pointer,
+                                   {q.x, q.y, q.z, q.w},
+                                   camera_m->camera_offset,
+                                   camera_m->gun_circle_norm_vector,
+                                   camera_m->camera_kind,
+                                   camera_m->zoom};
       camera_data.checkAndPush(state);
       break;
     }

@@ -206,6 +206,78 @@ namespace mpi {
     std::vector<uint8_t> data{};
   };
 
+  /// One store (missile or rocket) at one 0xF11A store sync, beside its position in the store's history.
+  /// 0xF11A carries no gun shells.
+  struct StoreSyncEvent {
+    uint32_t time_ms = 0;
+    ecs::EntityId eid{};
+    /// Server time in steps of 1/48 s; 0 to 42 ms after the packet time.
+    float server_time = 0;
+    /// World velocity, m/s (int16 / 16).
+    Point3 velocity{};
+    /// Seconds since launch, in steps of 1/48 s.
+    std::optional<float> flight_time{};
+  };
+
+  /// One weapon of a ground vehicle at one sync. A part of the values comes from the delta-coded
+  /// state, the rest from the ammunition list after it; either can be missing.
+  struct GroundWeaponSync {
+    /// Probable: the weapon is disabled. It rises within 1 s of a hit and falls without one (repair).
+    std::optional<bool> broken{};
+    /// Probable: barrel heat, 0 to 1. A main gun gains about 0.2 per shot and loses about 0.016 per
+    /// second; it reaches 1 on autocannons. Not sent for machine guns. It is not the reload progress.
+    std::optional<float> heat{};
+    /// Turret yaw and gun elevation relative to the hull, radians. The yaw takes the sign of the hull
+    /// heading: the F0CC gun yaw minus the heading equals it (median 0.31 deg).
+    std::optional<float> turret_yaw{};
+    std::optional<float> turret_pitch{};
+    /// Ammunition type in the gun and the type that comes next, indexes into rounds.
+    std::optional<uint8_t> loaded_type{};
+    std::optional<uint8_t> selected_type{};
+    /// Battle time in seconds of the weapon's last shot, and of the moment it can fire again.
+    std::optional<float> last_shot{};
+    std::optional<float> ready{};
+    /// Rounds left per ammunition type; 65535 is unlimited.
+    std::vector<uint16_t> rounds{};
+  };
+
+  /// One ground vehicle (or ship, or AI gun) at one 0xF074 sync. The motion values are there
+  /// only when has_motion is set.
+  struct GroundSyncEvent {
+    uint32_t time_ms = 0;
+    uint16_t uid = 0;
+    unit::Unit *unit = nullptr; ///< null for a ship or an AI gun
+    /// Two 4-bit spawn counters of the player, constant for a vehicle's life; both rise at each
+    /// new spawn. Which nibble counts what is not known.
+    uint8_t spawn_counter = 0;
+    bool has_motion = false;
+    bool is_ship = false; ///< a ship's state ends after its ship block here; no weapons from it
+    Point3 velocity{}; ///< world axes, m/s
+    /// Rad/s about the body axes, in the order of the unit's euler: roll, yaw, pitch.
+    Point3 angular_velocity{};
+    /// Probable: the physics body is not at rest. Never 0 while the vehicle moves.
+    bool awake = false;
+    /// Track (or wheel side) speeds in m/s, by the measured scale of 0.1266 m/s per step.
+    std::optional<float> track_left{};
+    std::optional<float> track_right{};
+    /// Probable: steering input, -1 to 1.
+    std::optional<float> steer{};
+    /// Drive input: 1 forward, 0, -1 reverse.
+    std::optional<float> throttle{};
+    /// Probable: engine speed, 0 to 255; 0 when the engine stops, also at the kill.
+    uint8_t engine = 0;
+    /// Probable: the vehicle is alive; falls within 100 ms of the kill.
+    bool alive = false;
+    /// A player sits in the vehicle. Falls about 10 s after the kill; 0 on AI guns.
+    bool player_controlled = false;
+    /// The point under the player's aim, while player_controlled: heading in radians (the sign of
+    /// the hull heading), and probable: pitch in radians and the distance in metres (10 km at most).
+    std::optional<float> aim_yaw{};
+    std::optional<float> aim_pitch{};
+    std::optional<float> aim_distance{};
+    std::vector<GroundWeaponSync> weapons{};
+  };
+
   /// The decoded fields of a seeker block. The block length tells the seeker. Of a store in
   /// flight: 607 bits radar, 639 bits radar at the change from search to track, 283 bits IR.
   /// Of a store still on an aircraft: 518 bits (IR, or no target), 599 bits (radar, no

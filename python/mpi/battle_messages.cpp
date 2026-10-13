@@ -278,6 +278,62 @@ void PyBattleMessages::include(py::module_ &m) {
       }, "The seven control bytes as sent")
       .def_readonly("engines", &mpi::ControlEvent::engines);
 
+  py::class_<mpi::StoreSyncEvent>(mpi, "StoreSyncEvent")
+      .def_readonly("time_ms", &mpi::StoreSyncEvent::time_ms)
+      .def_readonly("eid", &mpi::StoreSyncEvent::eid)
+      .def_readonly("server_time", &mpi::StoreSyncEvent::server_time,
+                    "Server time in seconds, steps of 1/48 s; 0 to 42 ms after time_ms")
+      .def_readonly("velocity", &mpi::StoreSyncEvent::velocity, "World velocity, m/s")
+      .def_readonly("flight_time", &mpi::StoreSyncEvent::flight_time, "Seconds since launch, or None");
+
+  py::class_<mpi::GroundWeaponSync>(mpi, "GroundWeaponSync")
+      .def_readonly("broken", &mpi::GroundWeaponSync::broken,
+                    "Probable: the weapon is disabled; rises at a hit, falls at the repair. None for a ship")
+      .def_readonly("heat", &mpi::GroundWeaponSync::heat,
+                    "Probable: barrel heat, 0 to 1; about +0.2 per main-gun shot. None when not sent (machine guns)")
+      .def_readonly("turret_yaw", &mpi::GroundWeaponSync::turret_yaw,
+                    "Turret yaw relative to the hull, radians, the sign of the hull heading; None when not sent")
+      .def_readonly("turret_pitch", &mpi::GroundWeaponSync::turret_pitch,
+                    "Gun elevation relative to the hull, radians; None when not sent")
+      .def_readonly("loaded_type", &mpi::GroundWeaponSync::loaded_type,
+                    "Index into rounds of the ammunition in the gun: the type the next shot takes")
+      .def_readonly("selected_type", &mpi::GroundWeaponSync::selected_type,
+                    "Index into rounds of the ammunition chosen for the next load")
+      .def_readonly("last_shot", &mpi::GroundWeaponSync::last_shot, "Battle time in seconds of the last shot")
+      .def_readonly("ready", &mpi::GroundWeaponSync::ready,
+                    "Battle time in seconds when the weapon can fire again: last_shot plus the reload")
+      .def_readonly("rounds", &mpi::GroundWeaponSync::rounds, "Rounds left per ammunition type; 65535 is unlimited");
+
+  py::class_<mpi::GroundSyncEvent>(mpi, "GroundSyncEvent")
+      .def_readonly("time_ms", &mpi::GroundSyncEvent::time_ms)
+      .def_readonly("uid", &mpi::GroundSyncEvent::uid)
+      .def_readonly("unit", &mpi::GroundSyncEvent::unit, "None for a ship or an AI gun")
+      .def_readonly("spawn_counter", &mpi::GroundSyncEvent::spawn_counter,
+                    "Two 4-bit spawn counters of the player; both rise at each new spawn")
+      .def_readonly("has_motion", &mpi::GroundSyncEvent::has_motion,
+                    "False when the motion values below were not sent")
+      .def_readonly("is_ship", &mpi::GroundSyncEvent::is_ship,
+                    "A ship: the state ends after the ship block, so alive, player_controlled and the weapon "
+                    "state from it stay unset")
+      .def_readonly("velocity", &mpi::GroundSyncEvent::velocity, "World axes, m/s")
+      .def_readonly("angular_velocity", &mpi::GroundSyncEvent::angular_velocity,
+                    "Rad/s, in the order of the unit's euler: roll, yaw, pitch")
+      .def_readonly("awake", &mpi::GroundSyncEvent::awake, "Probable: the physics body is not at rest")
+      .def_readonly("track_left", &mpi::GroundSyncEvent::track_left, "Left track speed, m/s (measured scale)")
+      .def_readonly("track_right", &mpi::GroundSyncEvent::track_right, "Right track speed, m/s (measured scale)")
+      .def_readonly("steer", &mpi::GroundSyncEvent::steer, "Probable: steering input, -1 to 1")
+      .def_readonly("throttle", &mpi::GroundSyncEvent::throttle, "Drive input: 1 forward, 0, -1 reverse")
+      .def_readonly("engine", &mpi::GroundSyncEvent::engine, "Probable: engine speed, 0 to 255; 0 once stopped")
+      .def_readonly("alive", &mpi::GroundSyncEvent::alive, "Probable: the vehicle is alive; falls at the kill")
+      .def_readonly("player_controlled", &mpi::GroundSyncEvent::player_controlled,
+                    "A player sits in the vehicle; falls about 10 s after the kill, False on AI guns")
+      .def_readonly("aim_yaw", &mpi::GroundSyncEvent::aim_yaw,
+                    "Heading of the player's aim, radians, the sign of the hull heading; None without a player")
+      .def_readonly("aim_pitch", &mpi::GroundSyncEvent::aim_pitch, "Probable: pitch of the aim, radians")
+      .def_readonly("aim_distance", &mpi::GroundSyncEvent::aim_distance,
+                    "Probable: distance to the point under the aim, m; 10 km at most")
+      .def_readonly("weapons", &mpi::GroundSyncEvent::weapons);
+
   py::enum_<mpi::SeekerSource>(mpi, "SeekerSource")
       .value("Weapon", mpi::SeekerWeapon)
       .value("Aircraft", mpi::SeekerAircraft)
@@ -316,6 +372,8 @@ void PyBattleMessages::include(py::module_ &m) {
 
   bind_readonly_vector_no_contain<std::pmr::vector<mpi::SeekerEvent>>(m, "SeekerEventList");
   bind_readonly_vector_no_contain<std::pmr::vector<mpi::ControlEvent>>(m, "ControlEventList");
+  bind_readonly_vector_no_contain<std::pmr::vector<mpi::GroundSyncEvent>>(m, "GroundSyncEventList");
+  bind_readonly_vector_no_contain<std::pmr::vector<mpi::StoreSyncEvent>>(m, "StoreSyncEventList");
   bind_readonly_vector_no_contain<std::pmr::vector<mpi::SensorEvent>>(m, "SensorEventList");
   bind_readonly_vector_no_contain<std::pmr::vector<mpi::DesignationEvent>>(m, "DesignationEventList");
 

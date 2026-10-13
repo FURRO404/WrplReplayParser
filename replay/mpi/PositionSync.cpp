@@ -454,16 +454,13 @@ struct SubVehicleDynData {
 };
 
 
-bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, bool is_from_compress) {
+// Ships and AI guns have no unit object; their state is read all the same, into ev only.
+bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, mpi::GroundSyncEvent &ev) {
   ZoneScoped;
-  if (!ref->ref_1) {
-    G_ASSERT(is_from_compress);
-    return true;
-  }
-  uint8_t v1;
-  RET_FAIL(bs.Read(v1));
+  RET_FAIL(bs.Read(ev.spawn_counter));
   bool b1;
   RET_FAIL(bs.Read(b1));
+  ev.has_motion = b1;
   if (b1) {
     Point3 direction{};
     if (ref->val1) {
@@ -492,8 +489,8 @@ bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, bool is_f
       netutils::unpack_euler_16(vals, direction);
       // LOGI("{} {} {}", direction.x, direction.y, direction.z);
     }
-    bool bool2, bool3;
-    bs.Read(bool2);
+    bool bool3;
+    bs.Read(ev.awake);
     bs.Read(bool3);
     Point3 unit_position{};
     if (bool3) {
@@ -538,26 +535,31 @@ bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, bool is_f
       out_2.y = netutils::UNPACKS(temp[1], 100.0);
       out_2.z = netutils::UNPACKS(temp[2], 100.0);
     }
+    ev.velocity = out_2;
     int8_t temp_vals[3];
-    Point3 temp_p3;
     RET_FAIL(bs.Read(temp_vals));
-    temp_p3.x = netutils::UNPACKS(temp_vals[0], PI);
-    temp_p3.y = netutils::UNPACKS(temp_vals[1], PI);
-    temp_p3.z = netutils::UNPACKS(temp_vals[2], PI);
-    bool bool4;
-    RET_FAIL(bs.Read(bool4));
-    uint8_t temp_vals_womp[4];
-    if (bool4) {
-      bs.Read(temp_vals_womp);
-    } else {
-      // some mathy logic here
+    ev.angular_velocity.x = netutils::UNPACKS(temp_vals[0], PI);
+    ev.angular_velocity.y = netutils::UNPACKS(temp_vals[1], PI);
+    ev.angular_velocity.z = netutils::UNPACKS(temp_vals[2], PI);
+    bool has_drive;
+    RET_FAIL(bs.Read(has_drive));
+    if (has_drive) {
+      int8_t drive[4];
+      RET_FAIL(bs.Read(drive));
+      // The track scale is measured: the same 0.1266 m/s per step on 21 vehicle types.
+      ev.track_left = drive[0] * 0.1266f;
+      ev.track_right = drive[1] * 0.1266f;
+      ev.steer = drive[2] / 127.f;
+      ev.throttle = drive[3] / 127.f;
     }
-    int8_t local_584 = 0x55; // dunno why??? lmao its what ghidra says the def value is
-    RET_FAIL(bs.Read(local_584)); // if bool4 is true, this should be 0
-    float local_584_val = netutils::UNPACKS(local_584, 0.5);
+    RET_FAIL(bs.Read(ev.engine));
+    // Only a ship sends this block; what follows it in a ship's state is not the tank layout.
     bool bool5;
     RET_FAIL(bs.Read(bool5));
+    ev.is_ship = bool5;
     if (bool5) {
+      // A ship sends the drive bytes as zeros.
+      ev.track_left = ev.track_right = ev.steer = ev.throttle = std::nullopt;
       uint8_t some_vals[6]; // 7 u8 reads
       uint8_t some_vals_2[2]; // 2 u8 reads
       bool some_val_3;
@@ -574,10 +576,11 @@ bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, bool is_f
       for (auto &b: some_vals_5) {
         RET_FAIL(bs.Read(b));
       }
+      return true;
     }
-    bool bool6, bool7, bool8;
+    bool bool6, bool8;
     RET_FAIL(bs.Read(bool6));
-    RET_FAIL(bs.Read(bool7));
+    RET_FAIL(bs.Read(ev.alive));
     RET_FAIL(bs.Read(bool8));
     if (bool8) {
       uint8_t some_vals[9];
@@ -613,27 +616,28 @@ bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, bool is_f
     }
   }
   bool b2;
-  bool b3;
   RET_FAIL(bs.Read(b2));
-  RET_FAIL(bs.Read(b3));
+  RET_FAIL(bs.Read(ev.player_controlled));
   float turret_horizontal = 5000;
   for (int i = 0; i < ref->turret_count; i++) {
-    auto weap = ref->ref_1->getWeapon(i);
+    auto weap = ref->ref_1 ? ref->ref_1->getWeapon(i) : nullptr;
+    auto &wev = ev.weapons[i];
     bool bool1, bool2, bool3, bool4;
     uint8_t val1, val2;
     RET_FAIL(bs.Read(bool1));
+    wev.broken = bool1;
     RET_FAIL(bs.Read(val1));
     RET_FAIL(bs.Read(bool2));
     if (bool2) {
       RET_FAIL(bs.Read(val2));
-      double val = netutils::UNPACK(val2, 1.0);
+      wev.heat = netutils::UNPACK(val2, 1.0);
     }
     RET_FAIL(bs.Read(bool3));
     RET_FAIL(bs.Read(bool4));
     // Nothing of these carries ammo, which was measured rather than assumed: v1 is zero
-    // in all 1.87 M samples of a battle, and v2 is only ever non-zero on turret 0, where
-    // it is the reload progress the UNPACK above turns into 0..1. A machine gun mount
-    // reports zero for both.
+    // in all 1.87 M samples of a battle. v2 is barrel heat, not the reload progress: it
+    // gains about 50 per main-gun shot, does not reset when the reload ends, and stays at
+    // 255 on a firing autocannon. A machine gun mount does not send it.
     // if (i==0)
     // LOGI("turret {}: bool1: {}; val1: {}; bool2: {}; val2: {}; bool3: {}; bool4: {}", i, bool1, val1, bool2, val2,
     //      bool3, bool4);
@@ -647,6 +651,9 @@ bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, bool is_f
         RET_FAIL(bs.Read(tv2));
         turret_x = UNPACK_S16(tv1, PI);
         turret_y = UNPACK_S16(tv2, PI);
+        wev.turret_yaw = turret_x;
+        wev.turret_pitch = turret_y;
+        // The same two angles in 1/256 of a turn; up to 20 deg apart while the turret turns fast.
         RET_FAIL(bs.Read(tv18));
         RET_FAIL(bs.Read(tv28));
         rot11 = UNPACK_S16(tv18, 180.0f);
@@ -762,25 +769,33 @@ bool GMSync(ParserState &state, BitStream &bs) {
         RET_FAIL(bs.Read(ref.val1));
         RET_FAIL(bs.Read(ref.turret_count));
         RET_FAIL(bs.Read(isCompressed));
+        mpi::GroundSyncEvent ev{state.curr_time_ms, uid_lower, ref.ref_1};
+        ev.weapons.resize(ref.turret_count);
+        bool have_state = false;
         if (isCompressed) {
           auto &hist = state.NetDelta.getHistory(uid_lower);
           auto res = state.NetDelta.netDelta.readDelta(bs, &hist);
           if (res.ok) {
-            bool ret = ParseVehicleInfo(state, res.bs, &ref, true);
-            if (ret == false && ref.ref_1 != nullptr) {
+            have_state = ParseVehicleInfo(state, res.bs, &ref, ev);
+            if (!have_state && ref.ref_1 != nullptr) {
               LOGE("Failed to parse info for ground unit {} of uid {}", ref.ref_1->unit_name, ref.ref_1->uid);
             }
           }
         } else {
           bs.AlignReadToByteBoundary();
-          ParseVehicleInfo(state, bs, &ref, false);
+          ParseVehicleInfo(state, bs, &ref, ev);
           G_ASSERT(false);
         }
-        bool bool7;
-        RET_FAIL(bs.Read(bool7));
-        if (bool7) {
-          Point4 tp4; // actually 4 float reads, but meght
-          bs.Read(tp4);
+        bool has_aim;
+        RET_FAIL(bs.Read(has_aim));
+        if (has_aim) {
+          // The point under the player's aim: minus the heading in degrees, the pitch in degrees, and
+          // the distance twice. Sent exactly while the state says a player sits in the vehicle.
+          float aim[4];
+          RET_FAIL(bs.Read(aim));
+          ev.aim_yaw = -aim[0] * DEG_TO_RAD;
+          ev.aim_pitch = aim[1] * DEG_TO_RAD;
+          ev.aim_distance = aim[2];
         }
         bool bool8;
         RET_FAIL(bs.Read(bool8));
@@ -789,20 +804,21 @@ bool GMSync(ParserState &state, BitStream &bs) {
             bool t1;
             RET_FAIL(bs.Read(t1));
             if (t1) {
-              uint8_t v1;
-              float v2;
-              float v3;
-              uint8_t v4;
-              RET_FAIL(bs.Read(v1));
-              RET_FAIL(bs.Read(v2));
-              RET_FAIL(bs.Read(v3));
-              RET_FAIL(bs.Read(v4));
-              // new ammunition counts!!!!
-              // first val is ammo 0, second is ammo 1, ...
-              for (int j = 0; j < v4; j++) {
-                uint16_t vv;
-                bs.Read(vv);
-              }
+              auto &w = ev.weapons[i];
+              uint8_t ammo_types;
+              float last_shot, ready;
+              uint8_t count;
+              RET_FAIL(bs.Read(ammo_types));
+              RET_FAIL(bs.Read(last_shot));
+              RET_FAIL(bs.Read(ready));
+              RET_FAIL(bs.Read(count));
+              w.loaded_type = ammo_types & 15;
+              w.selected_type = ammo_types >> 4;
+              w.last_shot = last_shot;
+              w.ready = ready;
+              w.rounds.resize(count);
+              for (auto &r: w.rounds)
+                RET_FAIL(bs.Read(r));
             }
           }
         }
@@ -816,6 +832,8 @@ bool GMSync(ParserState &state, BitStream &bs) {
           }
         }
         bs.AlignReadToByteBoundary();
+        if (have_state)
+          state.GroundSyncEvents.push_back(std::move(ev));
       }
     }
   }
@@ -918,31 +936,22 @@ bool ParseWeapon(ParserState &state, const BitStream &bs, get_weapon_cb cb) {
     entity->positions.checkAndPush(&state); // we don't compare, so this shouldn't invalidate our pointer
   }
   if (!bool2) {
-    int b5;
-    bs.ReadZigZag(b5);
+    // Server time in ticks of 1/48 s, 0 to 42 ms ahead of the packet time.
+    int tick;
+    RET_FAIL(bs.ReadZigZag(tick));
+    mpi::StoreSyncEvent sync{state.curr_time_ms, eid, (float) tick / 48.f};
     if (back) {
       RET_FAIL(bs.Read(back->euler));
     } else {
       Point3 b6;
       RET_FAIL(bs.Read(b6));
     }
-    Point3 b7;
-    Point3 b8;
-    uint16_t temp_t;
-    RET_FAIL(bs.Read(temp_t));
-    b7.x = netutils::UNPACK(temp_t, 4000.0f);
-    RET_FAIL(bs.Read(temp_t));
-    b7.y = netutils::UNPACK(temp_t, 4000.0f);
-    RET_FAIL(bs.Read(temp_t));
-    b7.z = netutils::UNPACK(temp_t, 4000.0f);
-
-
-    RET_FAIL(bs.Read(temp_t));
-    b8.x = netutils::UNPACK(temp_t, 30.0f);
-    RET_FAIL(bs.Read(temp_t));
-    b8.y = netutils::UNPACK(temp_t, 30.0f);
-    RET_FAIL(bs.Read(temp_t));
-    b8.z = netutils::UNPACK(temp_t, 30.0f);
+    int16_t vel[3];
+    RET_FAIL(bs.Read(vel));
+    sync.velocity = Point3(vel[0], vel[1], vel[2]) / 16.f;
+    // Three more int16 near 0, x always 0: not the angular rate and not the lateral load.
+    int16_t b8[3];
+    RET_FAIL(bs.Read(b8));
 
     bool some_b;
     uint16_t some_val = 0;
@@ -970,6 +979,9 @@ bool ParseWeapon(ParserState &state, const BitStream &bs, get_weapon_cb cb) {
       RET_FAIL(bs.ReadCompressed(temp));
       sf4 = (float) (temp - 1) / 48.f;
     }
+    if (flags & 1)
+      sync.flight_time = sf1;
+    state.StoreSyncEvents.push_back(sync);
     if (!bool1) {
       float vv;
       RET_FAIL(bs.Read(vv));

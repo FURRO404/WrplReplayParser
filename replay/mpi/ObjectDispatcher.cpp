@@ -414,11 +414,11 @@ namespace mpi {
           break;
         }
         case 4: {
-          RET_FAIL(bs->Read(this->some_val));
+          RET_FAIL(bs->Read(this->camera_kind));
           break;
         }
         case 5: {
-          RET_FAIL(bs->Read(this->some_magnitude));
+          RET_FAIL(bs->Read(this->zoom));
           break;
         }
         case 6: {
