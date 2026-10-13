@@ -41,6 +41,7 @@ struct AngularSpaceTime : SpaceTimeEuler {
 enum UnitType : uint8_t {
   TankType = 1,
   AircraftType = 2,
+  ShipType = 3,
 
 };
 
@@ -93,6 +94,8 @@ namespace unit {
   class Aircraft;
 
   class Tank;
+
+  class Ship;
 
   /// One line of the loadout the player took into the battle: which gun, which bullet
   /// set of it, and how much of it was taken. \see Weapon::bulletSets
@@ -244,6 +247,11 @@ namespace unit {
     Tank *AsTank();
 
     Aircraft *AsAircraft();
+
+    Ship *AsShip();
+
+    /// A tank or a ship: the units whose ids carry 0x800 in the kill and hit records.
+    bool isGround() const { return unitType == TankType || unitType == ShipType; }
   };
 
 
@@ -284,6 +292,24 @@ namespace unit {
     ~Tank() override = default;
   };
 
+  /// A ship (ECS template ship+player_unit). Its reflection objects are those of a ground model.
+  class Ship : public Unit {
+    GMReflectable gm_data{state};
+    GM_DVMReflectable gm_dvm_data{state};
+
+  public:
+    const char *getUnitTypeName() override;
+    void Load() override;
+
+    explicit Ship(ParserState *state, uint16_t uid) : Unit(state, uid, ShipType) {
+      base_data = &gm_data;
+      base_dvm_data = &gm_dvm_data;
+      gm_data.owner_unit = this;
+    }
+
+    ~Ship() override = default;
+  };
+
   struct UnitRef {
     Unit *unit = nullptr;
     bool operator==(const UnitRef &other) const { return unit == other.unit; }
@@ -299,6 +325,7 @@ public:
     switch (val) {
       case UnitType::TankType: str = "TankType"; break;
       case UnitType::AircraftType: str = "AircraftType"; break;
+      case UnitType::ShipType: str = "ShipType"; break;
       default: str = "UNKNOWN"; break;
     }
     return format_to(ctx.out(), "{}({})", static_cast<int>(val), str);

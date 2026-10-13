@@ -232,7 +232,7 @@ namespace mpi {
       return unit->base_data;
     }
     // should also later include fortifications?
-    if (obj_type == GM && unit->unitType == UnitType::TankType) {
+    if (obj_type == GM && unit->isGround()) {
       return unit->base_data;
     }
     if (obj_type == WEAP) {

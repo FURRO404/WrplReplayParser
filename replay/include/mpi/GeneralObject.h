@@ -410,6 +410,31 @@ namespace mpi {
     unit::Unit *spotted = nullptr;
   };
 
+  /// A unit entity created by the type 6 ECS creation. A player's spawn shows up here; the 0xD039
+  /// (class 5 or 6) that comes about 40 ms before it has no body. Also made: the dummy_plane each
+  /// player slot gets at battle start, and AI and support units (player -1).
+  struct SpawnEvent {
+    uint32_t time_ms = 0;
+    /// The unit id (low 11 bits). A later vehicle of the same player may keep it or get a new one.
+    uint16_t uid = 0;
+    /// unit__className: the vehicle, as the kill record names it, with the ECS prefix
+    /// (tankModels/, ships/, structures/) where the vehicle has one.
+    std::string vehicle{};
+    /// unit__playerId: the player slot, an index into the players; -1 for a unit with no player.
+    int player = -1;
+    int team = 0;
+    /// unitType of the ECS: 0 aircraft, 3 tank, 5 ship, 8 fortification.
+    int unit_type = 0;
+    /// unit__missionName: the mission slot, for example t1_player05_0.
+    std::string mission_name{};
+    /// Loadout name of the storage component (field 8); empty when the unit has no unit object.
+    std::string loadout{};
+    /// The dummy_plane a player slot gets at battle start; not a real vehicle.
+    bool dummy = false;
+    /// The unit object of an aircraft, tank or ship; null for a fortification.
+    unit::Unit *unit = nullptr;
+  };
+
   class UnitDetectedMessage : public Message {
     bool readPayload(ParserState *state) override;
 

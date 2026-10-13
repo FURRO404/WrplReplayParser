@@ -454,7 +454,7 @@ struct SubVehicleDynData {
 };
 
 
-// Ships and AI guns have no unit object; their state is read all the same, into ev only.
+// AI guns have no unit object; their state is read all the same, into ev only.
 bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, mpi::GroundSyncEvent &ev) {
   ZoneScoped;
   RET_FAIL(bs.Read(ev.spawn_counter));
@@ -518,12 +518,12 @@ bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, mpi::Grou
       unit_position.x = fv1;
       unit_position.z = fv3;
     }
-    if (ref->ref_1 && ref->ref_1->AsTank()) {
-      auto tank = ref->ref_1->AsTank();
-      auto ref = tank->positions.reserveOne();
+    if (ref->ref_1 && ref->ref_1->isGround()) {
+      auto ground = ref->ref_1;
+      auto ref = ground->positions.reserveOne();
       ref->euler = direction;
       ref->location = unit_position;
-      tank->positions.checkAndPush(&state);
+      ground->positions.checkAndPush(&state);
     }
     Point3 out_2;
     if (ref->val1) {

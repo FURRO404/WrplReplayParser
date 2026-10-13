@@ -178,6 +178,19 @@ void PyBattleMessages::include(py::module_ &m) {
       .def_readonly("spotter", &mpi::SpotEvent::spotter)
       .def_readonly("spotted", &mpi::SpotEvent::spotted);
 
+  py::class_<mpi::SpawnEvent>(mpi, "SpawnEvent")
+      .def_readonly("time_ms", &mpi::SpawnEvent::time_ms, "Time of the type 6 ECS creation of the unit entity")
+      .def_readonly("uid", &mpi::SpawnEvent::uid, "Unit id (low 11 bits); the kill record names the unit by it")
+      .def_readonly("vehicle", &mpi::SpawnEvent::vehicle,
+                    "unit__className, for example spitfire_f24, tankModels/fr_amx_m4, ships/us_sc_497")
+      .def_readonly("player", &mpi::SpawnEvent::player, "Player slot (index into players); -1 for no player")
+      .def_readonly("team", &mpi::SpawnEvent::team)
+      .def_readonly("unit_type", &mpi::SpawnEvent::unit_type, "ECS unitType: 0 aircraft, 3 tank, 5 ship, 8 fortification")
+      .def_readonly("mission_name", &mpi::SpawnEvent::mission_name, "Mission slot, for example t1_player05_0")
+      .def_readonly("loadout", &mpi::SpawnEvent::loadout, "Loadout of the storage component; empty without a unit")
+      .def_readonly("dummy", &mpi::SpawnEvent::dummy, "The dummy_plane of a player slot at battle start")
+      .def_readonly("unit", &mpi::SpawnEvent::unit, "None for a fortification");
+
   py::class_<mpi::ShotEvent>(mpi, "ShotEvent")
       .def_readonly("time_ms", &mpi::ShotEvent::time_ms)
       .def_readonly("unit", &mpi::ShotEvent::unit)
@@ -307,7 +320,7 @@ void PyBattleMessages::include(py::module_ &m) {
   py::class_<mpi::GroundSyncEvent>(mpi, "GroundSyncEvent")
       .def_readonly("time_ms", &mpi::GroundSyncEvent::time_ms)
       .def_readonly("uid", &mpi::GroundSyncEvent::uid)
-      .def_readonly("unit", &mpi::GroundSyncEvent::unit, "None for a ship or an AI gun")
+      .def_readonly("unit", &mpi::GroundSyncEvent::unit, "None for an AI gun")
       .def_readonly("spawn_counter", &mpi::GroundSyncEvent::spawn_counter,
                     "Two 4-bit spawn counters of the player; both rise at each new spawn")
       .def_readonly("has_motion", &mpi::GroundSyncEvent::has_motion,
@@ -384,6 +397,7 @@ void PyBattleMessages::include(py::module_ &m) {
   bind_readonly_vector_no_contain<std::pmr::vector<mpi::HitExplosion>>(m, "HitExplosionList");
   bind_readonly_vector_no_contain<std::pmr::vector<mpi::ShotEvent>>(m, "ShotEventList");
   bind_readonly_vector_no_contain<std::pmr::vector<mpi::SpotEvent>>(m, "SpotEventList");
+  bind_readonly_vector_no_contain<std::pmr::vector<mpi::SpawnEvent>>(m, "SpawnEventList");
   bind_readonly_vector_no_contain<std::pmr::vector<mpi::CockpitEvent>>(m, "CockpitEventList");
 
   py::class_<mpi::AwardMessage, mpi::IBattleMessage, std::unique_ptr<mpi::AwardMessage, py::nodelete>>(mpi,

@@ -134,6 +134,8 @@ void PyReplayState::include(py::module_ &m) {
                   "0xD04A, client replays only: the author's cockpit instruments as (id, value) pairs")
     .def_readonly("spots", &ParserState::SpotEvents,
                   "0xF037: the spotter sees the spotted unit, which gets its red mark on the spotter's screen")
+    .def_readonly("spawns", &ParserState::SpawnEvents,
+                  "One per unit entity the ECS creates: player vehicles, slot dummy planes, AI and support units")
     .def_readonly("controls", &ParserState::ControlEvents,
                   "The pilot's controls and the engines of each aircraft, from the flight-model syncs")
     .def_readonly("ground_syncs", &ParserState::GroundSyncEvents,

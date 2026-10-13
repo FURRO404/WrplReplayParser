@@ -392,7 +392,7 @@ namespace mpi {
       unit::Unit *u = state->getUnitObj(id);
       if (!u)
         return nullptr;
-      return (id & 0x800) ? (u->AsTank() ? u : nullptr) : (u->AsAircraft() ? u : nullptr);
+      return (id & 0x800) ? (u->isGround() ? u : nullptr) : (u->AsAircraft() ? u : nullptr);
     };
     spot.spotter = resolve(spot.spotter_id);
     spot.spotted = resolve(spot.spotted_id);

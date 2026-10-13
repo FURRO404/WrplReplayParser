@@ -22,6 +22,12 @@ namespace unit {
       return (Aircraft *) this;
     return nullptr;
   }
+
+  Ship *Unit::AsShip() {
+    if (unitType == ShipType)
+      return (Ship *) this;
+    return nullptr;
+  }
   struct weap {
     int id;
     const char *name;
@@ -660,6 +666,16 @@ namespace unit {
     Unit::Load();
     auto vehicle_blk = fmt::format("gamedata/units/{}.blk", this->raw_unit_name);
     loadWeaponData(vehicle_blk);
+  }
+
+  const char *Ship::getUnitTypeName() { return "Ship"; }
+
+  // The ECS names a ship ships/<name>; its blk is gamedata/units/ships/<name>.blk.
+  void Ship::Load() {
+    std::string_view raw{raw_unit_name};
+    unit_name = raw.starts_with("ships/") ? raw.substr(6) : raw;
+    Unit::Load();
+    loadWeaponData(fmt::format("gamedata/units/{}.blk", this->raw_unit_name));
   }
 
 

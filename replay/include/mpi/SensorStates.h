@@ -246,7 +246,7 @@ namespace mpi {
   struct GroundSyncEvent {
     uint32_t time_ms = 0;
     uint16_t uid = 0;
-    unit::Unit *unit = nullptr; ///< null for a ship or an AI gun
+    unit::Unit *unit = nullptr; ///< null for an AI gun
     /// Two 4-bit spawn counters of the player, constant for a vehicle's life; both rise at each
     /// new spawn. Which nibble counts what is not known.
     uint8_t spawn_counter = 0;
