@@ -163,6 +163,12 @@ public:
   std::pmr::vector<mpi::HitOutcome> HitOutcomes{get_allocator()};
   std::pmr::vector<mpi::AmmoEvent> AmmoEvents{get_allocator()};
   std::pmr::vector<mpi::ShotEvent> ShotEvents{get_allocator()};
+  /// Which of the event lists below the parse fills; set before LoadFromReader. The two sync lists hold one
+  /// event per unit per sync and cost the most memory (a long ground battle: 1.6 M ground syncs), so they are off.
+  struct EventLists {
+    bool sensors = true, designations = true, seekers = true, controls = true, spots = true, cockpit = true,
+         spawns = true, rpms = true, ground_syncs = false, store_syncs = false;
+  } keep{};
   std::pmr::vector<mpi::SensorEvent> SensorEvents{get_allocator()};
   std::pmr::vector<mpi::DesignationEvent> DesignationEvents{get_allocator()};
   std::pmr::vector<mpi::SeekerEvent> SeekerEvents{get_allocator()};

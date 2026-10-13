@@ -171,6 +171,8 @@ namespace mpi {
     /// trigger and the 37 mm on the cannon trigger; a jet's gun is on the cannon trigger.
     bool fire_mg = false;
     bool fire_cannon = false;
+    /// Trigger of the additional guns (flight-model trigger "additional gun": gun pods, guns below the wings).
+    bool fire_additional = false;
 
     /// Stick and pedals, -1 to 1 in steps of 1/7, sign as sent. Pitch is positive for a pull.
     float pitch() const { return ((controls[0] & 15) - 8) / 7.f; }
@@ -255,7 +257,15 @@ namespace mpi {
     /// new spawn. Which nibble counts what is not known.
     uint8_t spawn_counter = 0;
     bool has_motion = false;
-    bool is_ship = false; ///< a ship's state ends after its ship block here; no weapons from it
+    bool is_ship = false; ///< the ship block was sent (some AI ships send the tank layout)
+    /// Ship block. Throttle 127 stop, 254 full ahead, 0 full reverse; rudder 127 centre.
+    std::optional<uint8_t> ship_throttle{};
+    std::optional<uint8_t> ship_rudder{};
+    /// Probable: flooding, and three water levels that rise with it; s0 also rises at the kill while the ship sinks.
+    bool ship_flooding = false;
+    uint8_t ship_water[3]{};
+    /// One per transmission_NN_dm part (propeller shaft), 255 intact, falls with hits.
+    std::vector<uint8_t> ship_shafts{};
     Point3 velocity{}; ///< world axes, m/s
     /// Rad/s about the body axes, in the order of the unit's euler: roll, yaw, pitch.
     Point3 angular_velocity{};
@@ -297,10 +307,22 @@ namespace mpi {
     /// Radar only: the seeker's estimate of the target position, world axes. In the 895-bit
     /// block of an aircraft, the target the missile gets at launch.
     std::optional<Point3> target_pos{};
-    /// 518-bit aircraft block: 0 no lock (also after each launch), 2 a new lock, 3 and 4 lock held.
+    /// 518-bit aircraft block: 0 no lock (also after each launch), 2 seeker on at the boresight, 4 the seeker
+    /// axis on an aircraft (median 0.32 deg), 3 probable: a target, but the axis not on an aircraft. 6 also
+    /// occurs, with another layout.
     std::optional<uint8_t> ir_state{};
-    /// 518-bit aircraft block: battle time in seconds of the last seeker lock; empty before the first.
+    /// 518-bit aircraft block: battle time in seconds of the last change out of state 0 or 2; a change between
+    /// 3 and 4 keeps it. Empty before the first.
     std::optional<float> lock_time{};
+    /// 518-bit aircraft block: the seeker axis, a unit vector in world axes; in states 0 and 2 the aircraft's
+    /// forward axis about 2 deg down.
+    std::optional<Point3> seeker_dir{};
+    /// 518-bit aircraft block: gimbal angles in radians relative to the aircraft, azimuth positive to the left
+    /// and elevation positive up; 0 while caged, they stop at the missile's angleMax.
+    std::optional<float> gimbal_az{};
+    std::optional<float> gimbal_el{};
+    /// 518-bit aircraft block: half the seeker fov in radians (0.0314 for an AIM-9M).
+    std::optional<float> fov_half{};
   };
 
   SeekerState DecodeSeeker(const SeekerEvent &ev);

@@ -287,6 +287,7 @@ void PyBattleMessages::include(py::module_ &m) {
       .def_property_readonly("flaps", &mpi::ControlEvent::flaps, "0 to 1")
       .def_readonly("fire_mg", &mpi::ControlEvent::fire_mg, "Machine-gun trigger held")
       .def_readonly("fire_cannon", &mpi::ControlEvent::fire_cannon, "Cannon trigger held")
+      .def_readonly("fire_additional", &mpi::ControlEvent::fire_additional, "Additional gun (gun pod) trigger held")
       .def_property_readonly("airbrake", &mpi::ControlEvent::airbrake, "0 to 1")
       .def_property_readonly("wheel_brake", &mpi::ControlEvent::wheel_brake, "0 to 1")
       .def_property_readonly("throttle", &mpi::ControlEvent::throttle,
@@ -330,9 +331,15 @@ void PyBattleMessages::include(py::module_ &m) {
                     "Two 4-bit spawn counters of the player; both rise at each new spawn")
       .def_readonly("has_motion", &mpi::GroundSyncEvent::has_motion,
                     "False when the motion values below were not sent")
-      .def_readonly("is_ship", &mpi::GroundSyncEvent::is_ship,
-                    "A ship: the state ends after the ship block, so alive, player_controlled and the weapon "
-                    "state from it stay unset")
+      .def_readonly("is_ship", &mpi::GroundSyncEvent::is_ship, "The ship block was sent; a ship sends no alive bit")
+      .def_readonly("ship_throttle", &mpi::GroundSyncEvent::ship_throttle, "127 stop, 254 full ahead, 0 full reverse")
+      .def_readonly("ship_rudder", &mpi::GroundSyncEvent::ship_rudder, "127 centre")
+      .def_readonly("ship_flooding", &mpi::GroundSyncEvent::ship_flooding, "Probable: the ship floods")
+      .def_property_readonly("ship_water", [](const mpi::GroundSyncEvent &e) {
+        return py::make_tuple(e.ship_water[0], e.ship_water[1], e.ship_water[2]);
+      }, "Probable: three water levels")
+      .def_readonly("ship_shafts", &mpi::GroundSyncEvent::ship_shafts,
+                    "Health of each transmission_NN_dm part (propeller shaft), 255 intact")
       .def_readonly("velocity", &mpi::GroundSyncEvent::velocity, "World axes, m/s")
       .def_readonly("angular_velocity", &mpi::GroundSyncEvent::angular_velocity,
                     "Rad/s, in the order of the unit's euler: roll, yaw, pitch")
@@ -384,9 +391,19 @@ void PyBattleMessages::include(py::module_ &m) {
                              "Radar seeker's estimate of the target position, world axes; for the 895-bit block "
                              "of an aircraft, the target the missile gets at launch")
       .def_property_readonly("ir_state", [](const mpi::SeekerEvent &e) { return mpi::DecodeSeeker(e).ir_state; },
-                             "518-bit aircraft block: 0 no lock, 2 a new lock, 3 and 4 lock held")
+                             "518-bit aircraft block: 0 no lock, 2 seeker on at the boresight, 4 axis on an aircraft, "
+                             "3 probable: a target but the axis not on an aircraft")
       .def_property_readonly("lock_time", [](const mpi::SeekerEvent &e) { return mpi::DecodeSeeker(e).lock_time; },
-                             "518-bit aircraft block: battle time in seconds of the last lock, None before the first");
+                             "518-bit aircraft block: battle time of the last change out of state 0 or 2; a change "
+                             "between 3 and 4 keeps it. None before the first")
+      .def_property_readonly("seeker_dir", [](const mpi::SeekerEvent &e) { return mpi::DecodeSeeker(e).seeker_dir; },
+                             "518-bit aircraft block: the seeker axis, unit vector in world axes")
+      .def_property_readonly("gimbal_az", [](const mpi::SeekerEvent &e) { return mpi::DecodeSeeker(e).gimbal_az; },
+                             "518-bit aircraft block: gimbal azimuth in radians, positive to the left; 0 while caged")
+      .def_property_readonly("gimbal_el", [](const mpi::SeekerEvent &e) { return mpi::DecodeSeeker(e).gimbal_el; },
+                             "518-bit aircraft block: gimbal elevation in radians, positive up; 0 while caged")
+      .def_property_readonly("fov_half", [](const mpi::SeekerEvent &e) { return mpi::DecodeSeeker(e).fov_half; },
+                             "518-bit aircraft block: half the seeker fov in radians");
 
   bind_readonly_vector_no_contain<std::pmr::vector<mpi::SeekerEvent>>(m, "SeekerEventList");
   bind_readonly_vector_no_contain<std::pmr::vector<mpi::ControlEvent>>(m, "ControlEventList");

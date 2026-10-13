@@ -98,7 +98,8 @@ namespace mpi {
     // LOG("Deserialzing for Reflection type: %0x\n", mid);
     switch (mid) {
       case MPI_PACKETS::UnitDetected: {
-        this->state->SpotEvents.push_back(((const UnitDetectedMessage *) m)->spot);
+        if (this->state->keep.spots)
+          this->state->SpotEvents.push_back(((const UnitDetectedMessage *) m)->spot);
         break;
       }
       case MPI_PACKETS::Kill: {
@@ -370,7 +371,8 @@ namespace mpi {
 
   void LocalClientObject::applyMpiMessage(const Message *m) {
     if (m->id == MPI_PACKETS::ReplayCockpitParams)
-      state->CockpitEvents.push_back(((const CockpitMessage *) m)->cockpit);
+      if (state->keep.cockpit)
+        state->CockpitEvents.push_back(((const CockpitMessage *) m)->cockpit);
   }
 
   bool CockpitMessage::readPayload(ParserState *state) {

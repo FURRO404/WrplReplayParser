@@ -769,8 +769,10 @@ void BaseExtReflectable::applyMpiMessage(const mpi::Message *m) {
   ZoneScoped;
   switch (m->id) {
     case MPI_PACKETS::FmwRpm: {
-      auto &e = state->RpmEvents.emplace_back(((const mpi::RpmMessage *) m)->rpm);
-      e.unit = owner_unit;
+      if (state->keep.rpms) {
+        auto &e = state->RpmEvents.emplace_back(((const mpi::RpmMessage *) m)->rpm);
+        e.unit = owner_unit;
+      }
       break;
     }
     case MPI_PACKETS::UnitCamera: {

@@ -161,7 +161,7 @@ G_STATIC_ASSERT(sizeof(TargetDesignationControlState) == 0x50);
 static void ReadSeekerBits(ParserState &state, const BitStream &bs, uint32_t bits, mpi::SeekerEvent &ev) {
   ev.bits = bits;
   // A length past the end of the stream comes from a desync: allocate nothing for it.
-  if (bits > bs.GetNumberOfUnreadBits()) {
+  if (bits > bs.GetNumberOfUnreadBits() || !state.keep.seekers) {
     bs.IgnoreBits(bits);
     return;
   }
@@ -205,6 +205,10 @@ mpi::SeekerState mpi::DecodeSeeker(const SeekerEvent &ev) {
       float t = SeekerValue<float>(ev, 50);
       if (t > -1e30f)
         st.lock_time = t;
+      st.seeker_dir = Point3(SeekerValue<float>(ev, 149), SeekerValue<float>(ev, 181), SeekerValue<float>(ev, 213));
+      st.gimbal_az = SeekerValue<float>(ev, 85);
+      st.gimbal_el = SeekerValue<float>(ev, 117);
+      st.fov_half = SeekerValue<float>(ev, 341);
     } else if (ev.bits == 895) {
       st.target_pos = Point3(SeekerValue<float>(ev, 83), SeekerValue<float>(ev, 115), SeekerValue<float>(ev, 147));
     }
@@ -282,10 +286,10 @@ bool FMSync(ParserState &state, BitStream &bs) {
           if (triggers) {
             control.fire_mg = bs.ReadBit();
             control.fire_cannon = bs.ReadBit();
-            // A third trigger bit and one bit per gun follow; all were 0 in every replay seen.
-            // The count equals the number of guns on props (P-63 5, Bf 109 E 4, Bf 109 F 3)
-            // but not on jets (2 on a JAS 39C with one gun, 4 on a Mirage 2000 with two).
-            bool unk2 = bs.ReadBit();
+            control.fire_additional = bs.ReadBit();
+            // The count is the number of gun-type entries in the weapon list: guns, gun pods, turret guns, the
+            // dummy optic and HMD turrets and targeting pods (338 of 338 aircraft). The bit for each was 1 in
+            // only 19 syncs; its meaning is not known.
             uint8_t count = 0;
             bs.ReadBits(&count, 4);
             // std::vector<uint32_t>
@@ -362,7 +366,8 @@ bool FMSync(ParserState &state, BitStream &bs) {
             }
             RET_FAIL(bs.Read(engine.radiators));
           }
-          state.ControlEvents.push_back(std::move(control));
+          if (state.keep.controls)
+            state.ControlEvents.push_back(std::move(control));
           uint8_t sensorsCount;
           bs.Read(sensorsCount);
           RET_FAIL(sensorsCount <= SENSORS_COUNT);
@@ -375,7 +380,8 @@ bool FMSync(ParserState &state, BitStream &bs) {
             bs.Read(v);
           }
           for (uint8_t i = 0; i < sensorsCount; i++)
-            state.SensorEvents.push_back({state.curr_time_ms, unit, i, v, sensors[i]});
+            if (state.keep.sensors)
+              state.SensorEvents.push_back({state.curr_time_ms, unit, i, v, sensors[i]});
 
           uint8_t counterMeasuresCount;
           bs.Read(counterMeasuresCount);
@@ -393,7 +399,8 @@ bool FMSync(ParserState &state, BitStream &bs) {
           std::pmr::vector<TargetDesignationControlState> targets{targetsNum, state.get_allocator()};
           for (uint8_t i = 0; i < targetsNum; i++) {
             RET_FAIL(targets[i].deserialize(bs));
-            state.DesignationEvents.push_back({state.curr_time_ms, unit, i, targets[i]});
+            if (state.keep.designations)
+              state.DesignationEvents.push_back({state.curr_time_ms, unit, i, targets[i]});
           }
           bool bit_thing;
           bs.Read(bit_thing);
@@ -558,34 +565,37 @@ bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, mpi::Grou
       ev.throttle = drive[3] / 127.f;
     }
     RET_FAIL(bs.Read(ev.engine));
-    // Only a ship sends this block; what follows it in a ship's state is not the tank layout.
+    // Only a ship sends this block. A ship then sends no flag_b6 and no alive bit; the rest of its state is
+    // the same as a tank's (all 233,534 ship states of 3 naval battles read to the end).
     bool bool5;
     RET_FAIL(bs.Read(bool5));
     ev.is_ship = bool5;
     if (bool5) {
       // A ship sends the drive bytes as zeros.
       ev.track_left = ev.track_right = ev.steer = ev.throttle = std::nullopt;
-      uint8_t some_vals[6]; // 7 u8 reads
-      uint8_t some_vals_2[2]; // 2 u8 reads
-      bool some_val_3;
-      uint8_t some_val_4[4];
-      RET_FAIL(bs.Read(some_vals));
+      uint8_t ship[6]; // s0..s2 water levels (probable), s3 = s4 throttle, s5 rudder
+      uint8_t some_vals_2[2]; // never sent
+      uint8_t w[4]; // w0..w2 unknown (127 without flooding), then the shaft count
+      RET_FAIL(bs.Read(ship));
       if (bs.ReadBit()) {
         RET_FAIL(bs.Read(some_vals_2));
       }
-      RET_FAIL(bs.Read(some_val_3));
-      RET_FAIL(bs.Read(some_val_4));
-      RET_FAIL(some_val_4[3] <= 9);
-      std::vector<uint8_t> some_vals_5{};
-      some_vals_5.resize(some_val_4[3]);
-      for (auto &b: some_vals_5) {
+      RET_FAIL(bs.Read(ev.ship_flooding));
+      RET_FAIL(bs.Read(w));
+      RET_FAIL(w[3] <= 9);
+      std::copy_n(ship, 3, ev.ship_water);
+      ev.ship_throttle = ship[3];
+      ev.ship_rudder = ship[5];
+      ev.ship_shafts.resize(w[3]);
+      for (auto &b: ev.ship_shafts) {
         RET_FAIL(bs.Read(b));
       }
-      return true;
+    } else {
+      bool bool6;
+      RET_FAIL(bs.Read(bool6));
+      RET_FAIL(bs.Read(ev.alive));
     }
-    bool bool6, bool8;
-    RET_FAIL(bs.Read(bool6));
-    RET_FAIL(bs.Read(ev.alive));
+    bool bool8;
     RET_FAIL(bs.Read(bool8));
     if (bool8) {
       uint8_t some_vals[9];
@@ -671,7 +681,8 @@ bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, mpi::Grou
           turret_z = UNPACK_S16(extra_val, PI);
           //;LOGI("extra_val: {}", extra_val);
         }
-        if (weap && weap->turret_desc) {
+        // A ship sends its preset weapons first, then commonWeapons: not the unit's weapon order.
+        if (weap && weap->turret_desc && !ev.is_ship) {
           auto turret = weap->turret_desc.get();
           turret->setData({turret_x, turret_y, turret_z});
         }
@@ -699,7 +710,8 @@ bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, mpi::Grou
   }
   if (ref->ref_1)
     for (uint8_t i = 0; i < sensorsCount; i++)
-      state.SensorEvents.push_back({state.curr_time_ms, ref->ref_1, i, some_weird_val, states[i]});
+      if (state.keep.sensors)
+        state.SensorEvents.push_back({state.curr_time_ms, ref->ref_1, i, some_weird_val, states[i]});
   uint8_t counterMeasuresCount;
   RET_FAIL(bs.Read(counterMeasuresCount));
   RET_FAIL(counterMeasuresCount <= COUNTER_MEASURES_COUNT);
@@ -716,7 +728,8 @@ bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, mpi::Grou
   for (uint8_t i = 0; i < targetsNum; i++) {
     RET_FAIL(targets[i].deserialize(bs));
     if (ref->ref_1)
-      state.DesignationEvents.push_back({state.curr_time_ms, ref->ref_1, i, targets[i]});
+      if (state.keep.designations)
+        state.DesignationEvents.push_back({state.curr_time_ms, ref->ref_1, i, targets[i]});
   }
   if (ref->ref_1) {
     ref->ref_1->calculateTurretData();
@@ -838,7 +851,7 @@ bool GMSync(ParserState &state, BitStream &bs) {
           }
         }
         bs.AlignReadToByteBoundary();
-        if (have_state)
+        if (have_state && state.keep.ground_syncs)
           state.GroundSyncEvents.push_back(std::move(ev));
       }
     }
@@ -987,7 +1000,8 @@ bool ParseWeapon(ParserState &state, const BitStream &bs, get_weapon_cb cb) {
     }
     if (flags & 1)
       sync.flight_time = sf1;
-    state.StoreSyncEvents.push_back(sync);
+    if (state.keep.store_syncs)
+      state.StoreSyncEvents.push_back(sync);
     if (!bool1) {
       float vv;
       RET_FAIL(bs.Read(vv));

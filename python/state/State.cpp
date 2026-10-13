@@ -86,12 +86,26 @@ void PyReplayState::include(py::module_ &m) {
   bind_readonly_vector_no_contain<std::vector<ChatMessage>>(m, "ChatMessageList");
   bind_readonly_vector_no_contain<std::vector<const mpi::IBattleMessage *>>(m, "IBattleMessageList");
 
+  using Keep = ParserState::EventLists;
+  py::class_<Keep>(m, "EventLists", "Which event lists the parse fills; set them before LoadFromReader")
+    .def_readwrite("sensors", &Keep::sensors)
+    .def_readwrite("designations", &Keep::designations)
+    .def_readwrite("seekers", &Keep::seekers)
+    .def_readwrite("controls", &Keep::controls)
+    .def_readwrite("spots", &Keep::spots)
+    .def_readwrite("cockpit", &Keep::cockpit)
+    .def_readwrite("spawns", &Keep::spawns)
+    .def_readwrite("rpms", &Keep::rpms)
+    .def_readwrite("ground_syncs", &Keep::ground_syncs, "Off by default: one event per vehicle per sync")
+    .def_readwrite("store_syncs", &Keep::store_syncs, "Off by default: one event per store per sync");
+
   py::class_<ParserState>(m, "ParserState")
     .def(py::init<>())
     .def(py::init<IReplay *>())
     .def(py::init<Replay *>())
     .def(py::init<ServerReplay *>())
     .def_readonly("mgr", &ParserState::g_entity_mgr)
+    .def_readonly("keep", &ParserState::keep, "Event list switches, e.g. st.keep.ground_syncs = True")
     .def("getUnitEid", &ParserState::getUnitEid, py::arg("uid"))
     .def("getUnitRef", &ParserState::getUnitObj, py::arg("uid"), py::keep_alive<0, 1>())
     .def_readonly("players", &ParserState::players)

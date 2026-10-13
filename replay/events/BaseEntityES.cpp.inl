@@ -83,6 +83,8 @@ ECS_AFTER(after_unit_appear_es)
 static void spawn_event_es(const ecs::EventEntityCreated &evt, const int &uid, const ecs::string &unit__className,
                            const int &unit__playerId, const ecs::string &unit__missionName, const int &team,
                            const int &unitType, const unit::UnitRef &unit__ref, ecs::EntityManager &manager) {
+  if (!manager.owned_by->keep.spawns)
+    return;
   auto &spawn = manager.owned_by->SpawnEvents.emplace_back();
   spawn.time_ms = *manager.curr_time_ms;
   spawn.uid = static_cast<uint16_t>(uid & 0x7FF);
