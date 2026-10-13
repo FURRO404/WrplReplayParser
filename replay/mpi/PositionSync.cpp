@@ -160,6 +160,11 @@ G_STATIC_ASSERT(sizeof(TargetDesignationControlState) == 0x50);
 // after it stay at the correct offset.
 static void ReadSeekerBits(ParserState &state, const BitStream &bs, uint32_t bits, mpi::SeekerEvent &ev) {
   ev.bits = bits;
+  // A length past the end of the stream comes from a desync: allocate nothing for it.
+  if (bits > bs.GetNumberOfUnreadBits()) {
+    bs.IgnoreBits(bits);
+    return;
+  }
   ev.data.resize(BITS_TO_BYTES(bits));
   if (bs.ReadBits(ev.data.data(), bits))
     state.SeekerEvents.push_back(std::move(ev));
@@ -232,7 +237,7 @@ mpi::SeekerState mpi::DecodeSeeker(const SeekerEvent &ev) {
 }
 
 void DeserializeSeekerData(ParserState &state, BitStream &bs, mpi::SeekerSource source, unit::Unit *unit) {
-  uint32_t val;
+  uint32_t val = 0;
   bs.Read(val);
   mpi::SeekerEvent ev{state.curr_time_ms, source};
   ev.unit = unit;
@@ -683,7 +688,8 @@ bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, mpi::Grou
   RET_FAIL(bs.Read(sensorsCount));
   RET_FAIL(sensorsCount <= SENSORS_COUNT);
   thread_local std::vector<SensorsControlStates> states{};
-  states.resize(sensorsCount);
+  // assign, not resize: deserialize leaves fields it does not read, and these go out in the events
+  states.assign(sensorsCount, {});
   for (auto &sensor: states) {
     RET_FAIL(sensor.deserialize(bs));
   }
@@ -706,7 +712,7 @@ bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, mpi::Grou
   RET_FAIL(bs.ReadBits(&targetsNum, 4));
   RET_FAIL(targetsNum <= 8);
   thread_local std::vector<TargetDesignationControlState> targets{};
-  targets.resize(targetsNum);
+  targets.assign(targetsNum, {});
   for (uint8_t i = 0; i < targetsNum; i++) {
     RET_FAIL(targets[i].deserialize(bs));
     if (ref->ref_1)

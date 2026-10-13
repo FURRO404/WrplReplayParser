@@ -293,7 +293,8 @@ namespace unit {
     }
     this->name_index = translate::get_locale_index(fmt::format("weapons/{}", this->weapon_name));
     this->name_index_short = translate::get_locale_index(fmt::format("weapons/{}/short", this->weapon_name));
-    if (this->weapon_name != "dummy_weapon" && strcmp("boosters", trigger) != 0)
+    // A naval gun (ships/*, also the AI ships of air maps) can have no weapons/<name> line in the lang files.
+    if (this->weapon_name != "dummy_weapon" && strcmp("boosters", trigger) != 0 && unit->unitType != ShipType)
       G_ASSERT(this->name_index != translate::INVALID_TRANSLATE_INDEX);
 
     weapons_count[weapon_id]++;
