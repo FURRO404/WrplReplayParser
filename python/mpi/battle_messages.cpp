@@ -305,59 +305,66 @@ void PyBattleMessages::include(py::module_ &m) {
       .def_readonly("velocity", &mpi::StoreSyncEvent::velocity, "World velocity, m/s")
       .def_readonly("flight_time", &mpi::StoreSyncEvent::flight_time, "Seconds since launch, or None");
 
-  py::class_<mpi::GroundWeaponSync>(mpi, "GroundWeaponSync")
-      .def_readonly("broken", &mpi::GroundWeaponSync::broken,
-                    "Probable: the weapon is disabled; rises at a hit, falls at the repair. None for a ship")
-      .def_readonly("heat", &mpi::GroundWeaponSync::heat,
-                    "Probable: barrel heat, 0 to 1; about +0.2 per main-gun shot. None when not sent (machine guns)")
-      .def_readonly("turret_yaw", &mpi::GroundWeaponSync::turret_yaw,
-                    "Turret yaw relative to the hull, radians, the sign of the hull heading; None when not sent")
-      .def_readonly("turret_pitch", &mpi::GroundWeaponSync::turret_pitch,
-                    "Gun elevation relative to the hull, radians; None when not sent")
-      .def_readonly("loaded_type", &mpi::GroundWeaponSync::loaded_type,
-                    "Index into rounds of the ammunition in the gun: the type the next shot takes")
-      .def_readonly("selected_type", &mpi::GroundWeaponSync::selected_type,
-                    "Index into rounds of the ammunition chosen for the next load")
-      .def_readonly("last_shot", &mpi::GroundWeaponSync::last_shot, "Battle time in seconds of the last shot")
-      .def_readonly("ready", &mpi::GroundWeaponSync::ready,
-                    "Battle time in seconds when the weapon can fire again: last_shot plus the reload")
-      .def_readonly("rounds", &mpi::GroundWeaponSync::rounds, "Rounds left per ammunition type; 65535 is unlimited");
+  using GW = PyGroundWeapon;
+  py::class_<GW>(mpi, "GroundWeaponSync")
+      .def_property_readonly("broken", [](const GW &g) { return g.w.broken(); },
+                             "Probable: the weapon is disabled; rises at a hit, falls at the repair")
+      .def_property_readonly("heat", [](const GW &g) { return g.w.heat(); },
+                             "Probable: barrel heat, 0 to 1; about +0.2 per main-gun shot. None when not sent "
+                             "(machine guns)")
+      .def_property_readonly("turret_yaw", [](const GW &g) { return g.w.turret_yaw(); },
+                             "Turret yaw relative to the hull, radians, the sign of the hull heading; None when "
+                             "not sent")
+      .def_property_readonly("turret_pitch", [](const GW &g) { return g.w.turret_pitch(); },
+                             "Gun elevation relative to the hull, radians; None when not sent")
+      .def_property_readonly("loaded_type", [](const GW &g) { return g.w.loaded_type(); },
+                             "Index into rounds of the ammunition in the gun: the type the next shot takes")
+      .def_property_readonly("selected_type", [](const GW &g) { return g.w.selected_type(); },
+                             "Index into rounds of the ammunition chosen for the next load")
+      .def_property_readonly("last_shot", [](const GW &g) { return g.w.last_shot(); },
+                             "Battle time in seconds of the last shot")
+      .def_property_readonly("ready", [](const GW &g) { return g.w.ready(); },
+                             "Battle time in seconds when the weapon can fire again: last_shot plus the reload")
+      .def_readonly("rounds", &GW::rounds, "Rounds left per ammunition type; 65535 is unlimited");
 
-  py::class_<mpi::GroundSyncEvent>(mpi, "GroundSyncEvent")
-      .def_readonly("time_ms", &mpi::GroundSyncEvent::time_ms)
-      .def_readonly("uid", &mpi::GroundSyncEvent::uid)
-      .def_readonly("unit", &mpi::GroundSyncEvent::unit, "None for an AI gun")
-      .def_readonly("spawn_counter", &mpi::GroundSyncEvent::spawn_counter,
+  using GS = mpi::GroundSyncEvent;
+  py::class_<GS>(mpi, "GroundSyncEvent",
+                 "Kept only when the vehicle's state changed: the state at a time is the vehicle's last event at "
+                 "or before it")
+      .def_readonly("time_ms", &GS::time_ms)
+      .def_readonly("uid", &GS::uid)
+      .def_readonly("unit", &GS::unit, "None for an AI gun")
+      .def_readonly("spawn_counter", &GS::spawn_counter,
                     "Two 4-bit spawn counters of the player; both rise at each new spawn")
-      .def_readonly("has_motion", &mpi::GroundSyncEvent::has_motion,
-                    "False when the motion values below were not sent")
-      .def_readonly("is_ship", &mpi::GroundSyncEvent::is_ship, "The ship block was sent; a ship sends no alive bit")
-      .def_readonly("ship_throttle", &mpi::GroundSyncEvent::ship_throttle, "127 stop, 254 full ahead, 0 full reverse")
-      .def_readonly("ship_rudder", &mpi::GroundSyncEvent::ship_rudder, "127 centre")
-      .def_readonly("ship_flooding", &mpi::GroundSyncEvent::ship_flooding, "Probable: the ship floods")
-      .def_property_readonly("ship_water", [](const mpi::GroundSyncEvent &e) {
+      .def_property_readonly("has_motion", &GS::has_motion, "False when the motion values below were not sent")
+      .def_property_readonly("is_ship", &GS::is_ship, "The ship block was sent; a ship sends no alive bit")
+      .def_property_readonly("ship_throttle", &GS::ship_throttle, "127 stop, 254 full ahead, 0 full reverse")
+      .def_property_readonly("ship_rudder", &GS::ship_rudder, "127 centre")
+      .def_property_readonly("ship_flooding", &GS::ship_flooding, "Probable: the ship floods")
+      .def_property_readonly("ship_water", [](const GS &e) {
         return py::make_tuple(e.ship_water[0], e.ship_water[1], e.ship_water[2]);
       }, "Probable: three water levels")
-      .def_readonly("ship_shafts", &mpi::GroundSyncEvent::ship_shafts,
-                    "Health of each transmission_NN_dm part (propeller shaft), 255 intact")
-      .def_readonly("velocity", &mpi::GroundSyncEvent::velocity, "World axes, m/s")
-      .def_readonly("angular_velocity", &mpi::GroundSyncEvent::angular_velocity,
-                    "Rad/s, in the order of the unit's euler: roll, yaw, pitch")
-      .def_readonly("awake", &mpi::GroundSyncEvent::awake, "Probable: the physics body is not at rest")
-      .def_readonly("track_left", &mpi::GroundSyncEvent::track_left, "Left track speed, m/s (measured scale)")
-      .def_readonly("track_right", &mpi::GroundSyncEvent::track_right, "Right track speed, m/s (measured scale)")
-      .def_readonly("steer", &mpi::GroundSyncEvent::steer, "Probable: steering input, -1 to 1")
-      .def_readonly("throttle", &mpi::GroundSyncEvent::throttle, "Drive input: 1 forward, 0, -1 reverse")
-      .def_readonly("engine", &mpi::GroundSyncEvent::engine, "Probable: engine speed, 0 to 255; 0 once stopped")
-      .def_readonly("alive", &mpi::GroundSyncEvent::alive, "Probable: the vehicle is alive; falls at the kill")
-      .def_readonly("player_controlled", &mpi::GroundSyncEvent::player_controlled,
-                    "A player sits in the vehicle; falls about 10 s after the kill, False on AI guns")
-      .def_readonly("aim_yaw", &mpi::GroundSyncEvent::aim_yaw,
-                    "Heading of the player's aim, radians, the sign of the hull heading; None without a player")
-      .def_readonly("aim_pitch", &mpi::GroundSyncEvent::aim_pitch, "Probable: pitch of the aim, radians")
-      .def_readonly("aim_distance", &mpi::GroundSyncEvent::aim_distance,
-                    "Probable: distance to the point under the aim, m; 10 km at most")
-      .def_readonly("weapons", &mpi::GroundSyncEvent::weapons);
+      .def_property_readonly("ship_shafts", &GS::ship_shafts,
+                             "Health of each transmission_NN_dm part (propeller shaft), 255 intact")
+      .def_readonly("velocity", &GS::velocity, "World axes, m/s")
+      .def_property_readonly("angular_velocity", &GS::angular_velocity,
+                             "Rad/s, in the order of the unit's euler: roll, yaw, pitch")
+      .def_property_readonly("awake", &GS::awake, "Probable: the physics body is not at rest")
+      .def_property_readonly("track_left", &GS::track_left, "Left track speed, m/s (measured scale)")
+      .def_property_readonly("track_right", &GS::track_right, "Right track speed, m/s (measured scale)")
+      .def_property_readonly("steer", &GS::steer, "Probable: steering input, -1 to 1")
+      .def_property_readonly("throttle", &GS::throttle, "Drive input: 1 forward, 0, -1 reverse")
+      .def_readonly("engine", &GS::engine, "Probable: engine speed, 0 to 255; 0 once stopped")
+      .def_property_readonly("alive", &GS::alive, "Probable: the vehicle is alive; falls at the kill")
+      .def_property_readonly("player_controlled", &GS::player_controlled,
+                             "A player sits in the vehicle; falls about 10 s after the kill, False on AI guns")
+      .def_property_readonly("aim_yaw", &GS::aim_yaw,
+                             "Heading of the player's aim, radians, the sign of the hull heading; None without a "
+                             "player")
+      .def_property_readonly("aim_pitch", &GS::aim_pitch, "Probable: pitch of the aim, radians")
+      .def_property_readonly("aim_distance", &GS::aim_distance,
+                             "Probable: distance to the point under the aim, m; 10 km at most")
+      .def_readonly("weapon_count", &GS::weapon_count, "ParserState.ground_weapons(event) gives the weapons");
 
   py::enum_<mpi::SeekerSource>(mpi, "SeekerSource")
       .value("Weapon", mpi::SeekerWeapon)

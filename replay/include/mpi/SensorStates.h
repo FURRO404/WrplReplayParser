@@ -4,6 +4,8 @@
 #include <optional>
 #include <vector>
 #include "danet/BitStream.h"
+#include "danet/dag_netUtils.h"
+#include "math/dag_mathBase.h"
 #include "math/dag_Point3.h"
 #include "ecs/entityId.h"
 
@@ -225,71 +227,127 @@ namespace mpi {
     std::optional<float> flight_time{};
   };
 
-  /// One weapon of a ground vehicle at one sync. A part of the values comes from the delta-coded
-  /// state, the rest from the ammunition list after it; either can be missing.
+  /// One weapon of a ground vehicle at one sync, kept as sent; the accessors give the values. A part
+  /// comes from the delta-coded state, the rest from the ammunition list after it; either can be missing.
+  /// The records live in ParserState::GroundWeapons, their rounds in ParserState::GroundRounds.
   struct GroundWeaponSync {
+    enum : uint8_t { HasBroken = 1, IsBroken = 2, HasHeat = 4, HasTurret = 8, HasAmmo = 16 };
+    uint8_t flags = 0;
+    uint8_t heat_raw = 0;
+    uint8_t ammo_types = 0; ///< loaded type in the low nibble, selected type in the high one
+    uint8_t round_count = 0;
+    int16_t yaw_raw = 0;
+    int16_t pitch_raw = 0;
+    float last_shot_s = 0;
+    float ready_s = 0;
+    uint32_t rounds_begin = 0; ///< index into ParserState::GroundRounds
+
     /// Probable: the weapon is disabled. It rises within 1 s of a hit and falls without one (repair).
-    std::optional<bool> broken{};
+    std::optional<bool> broken() const { return has(HasBroken) ? std::optional<bool>(has(IsBroken)) : std::nullopt; }
     /// Probable: barrel heat, 0 to 1. A main gun gains about 0.2 per shot and loses about 0.016 per
     /// second; it reaches 1 on autocannons. Not sent for machine guns. It is not the reload progress.
-    std::optional<float> heat{};
+    std::optional<float> heat() const {
+      return has(HasHeat) ? std::optional<float>(netutils::UNPACK(heat_raw, 1.0)) : std::nullopt;
+    }
     /// Turret yaw and gun elevation relative to the hull, radians. The yaw takes the sign of the hull
     /// heading: the F0CC gun yaw minus the heading equals it (median 0.31 deg).
-    std::optional<float> turret_yaw{};
-    std::optional<float> turret_pitch{};
+    std::optional<float> turret_yaw() const { return angle(yaw_raw); }
+    std::optional<float> turret_pitch() const { return angle(pitch_raw); }
     /// Ammunition type in the gun and the type that comes next, indexes into rounds.
-    std::optional<uint8_t> loaded_type{};
-    std::optional<uint8_t> selected_type{};
+    std::optional<uint8_t> loaded_type() const { return ammo<uint8_t>(ammo_types & 15); }
+    std::optional<uint8_t> selected_type() const { return ammo<uint8_t>(ammo_types >> 4); }
     /// Battle time in seconds of the weapon's last shot, and of the moment it can fire again.
-    std::optional<float> last_shot{};
-    std::optional<float> ready{};
-    /// Rounds left per ammunition type; 65535 is unlimited.
-    std::vector<uint16_t> rounds{};
+    std::optional<float> last_shot() const { return ammo<float>(last_shot_s); }
+    std::optional<float> ready() const { return ammo<float>(ready_s); }
+
+  private:
+    bool has(uint8_t f) const { return flags & f; }
+    /// As UNPACK_S16(raw, PI), which gives -PI for the invalid value.
+    std::optional<float> angle(int16_t raw) const {
+      if (!has(HasTurret))
+        return std::nullopt;
+      return raw == INT16_MIN ? -PI : netutils::UNPACKS(raw, PI);
+    }
+    template <typename T>
+    std::optional<T> ammo(T v) const {
+      return has(HasAmmo) ? std::optional<T>(v) : std::nullopt;
+    }
   };
 
-  /// One ground vehicle (or ship, or AI gun) at one 0xF074 sync. The motion values are there
-  /// only when has_motion is set.
+  /// One ground vehicle (or ship, or AI gun) at one 0xF074 sync, kept as sent; the accessors give the
+  /// values. The motion values are there only when has_motion is set. ParserState keeps an event only
+  /// when it differs from the vehicle's previous one: the state at a time is the vehicle's last event
+  /// at or before it.
   struct GroundSyncEvent {
+    enum : uint8_t {
+      HasMotion = 1, IsShip = 2, Awake = 4, Alive = 8, PlayerControlled = 16, HasDrive = 32, HasAim = 64,
+      ShipFlooding = 128
+    };
+    static constexpr int MaxShafts = 9;
     uint32_t time_ms = 0;
     uint16_t uid = 0;
-    unit::Unit *unit = nullptr; ///< null for an AI gun
     /// Two 4-bit spawn counters of the player, constant for a vehicle's life; both rise at each
     /// new spawn. Which nibble counts what is not known.
     uint8_t spawn_counter = 0;
-    bool has_motion = false;
-    bool is_ship = false; ///< the ship block was sent (some AI ships send the tank layout)
-    /// Ship block. Throttle 127 stop, 254 full ahead, 0 full reverse; rudder 127 centre.
-    std::optional<uint8_t> ship_throttle{};
-    std::optional<uint8_t> ship_rudder{};
-    /// Probable: flooding, and three water levels that rise with it; s0 also rises at the kill while the ship sinks.
-    bool ship_flooding = false;
-    uint8_t ship_water[3]{};
-    /// One per transmission_NN_dm part (propeller shaft), 255 intact, falls with hits.
-    std::vector<uint8_t> ship_shafts{};
+    uint8_t flags = 0;
+    unit::Unit *unit = nullptr; ///< null for an AI gun
     Point3 velocity{}; ///< world axes, m/s
-    /// Rad/s about the body axes, in the order of the unit's euler: roll, yaw, pitch.
-    Point3 angular_velocity{};
-    /// Probable: the physics body is not at rest. Never 0 while the vehicle moves.
-    bool awake = false;
-    /// Track (or wheel side) speeds in m/s, by the measured scale of 0.1266 m/s per step.
-    std::optional<float> track_left{};
-    std::optional<float> track_right{};
-    /// Probable: steering input, -1 to 1.
-    std::optional<float> steer{};
-    /// Drive input: 1 forward, 0, -1 reverse.
-    std::optional<float> throttle{};
+    int8_t angular_raw[3]{};
+    int8_t drive_raw[4]{};
     /// Probable: engine speed, 0 to 255; 0 when the engine stops, also at the kill.
     uint8_t engine = 0;
-    /// Probable: the vehicle is alive; falls within 100 ms of the kill.
-    bool alive = false;
+    float aim[3]{}; ///< aim_yaw, aim_pitch, aim_distance as sent in the aim block
+    /// Ship block. Probable: three water levels that rise with flooding; s0 also rises at the kill while
+    /// the ship sinks.
+    uint8_t ship_water[3]{};
+    uint8_t ship_throttle_raw = 0;
+    uint8_t ship_rudder_raw = 0;
+    uint8_t shaft_count = 0;
+    /// One per transmission_NN_dm part (propeller shaft), 255 intact, falls with hits.
+    uint8_t shafts[MaxShafts]{};
+    uint8_t weapon_count = 0;
+    uint32_t weapons_begin = 0; ///< index into ParserState::GroundWeapons
+
+    bool has_motion() const { return has(HasMotion); }
+    /// The ship block was sent (some AI ships send the tank layout).
+    bool is_ship() const { return has(IsShip); }
+    /// Ship block. Throttle 127 stop, 254 full ahead, 0 full reverse; rudder 127 centre.
+    std::optional<uint8_t> ship_throttle() const { return ship(ship_throttle_raw); }
+    std::optional<uint8_t> ship_rudder() const { return ship(ship_rudder_raw); }
+    /// Probable: flooding.
+    bool ship_flooding() const { return has(ShipFlooding); }
+    std::vector<uint8_t> ship_shafts() const { return {shafts, shafts + shaft_count}; }
+    /// Rad/s about the body axes, in the order of the unit's euler: roll, yaw, pitch.
+    Point3 angular_velocity() const {
+      return {netutils::UNPACKS(angular_raw[0], PI), netutils::UNPACKS(angular_raw[1], PI),
+              netutils::UNPACKS(angular_raw[2], PI)};
+    }
+    /// Probable: the physics body is not at rest. Never 0 while the vehicle moves.
+    bool awake() const { return has(Awake); }
+    /// Track (or wheel side) speeds in m/s, by the measured scale of 0.1266 m/s per step.
+    std::optional<float> track_left() const { return drive(drive_raw[0] * 0.1266f); }
+    std::optional<float> track_right() const { return drive(drive_raw[1] * 0.1266f); }
+    /// Probable: steering input, -1 to 1.
+    std::optional<float> steer() const { return drive(drive_raw[2] / 127.f); }
+    /// Drive input: 1 forward, 0, -1 reverse.
+    std::optional<float> throttle() const { return drive(drive_raw[3] / 127.f); }
+    /// Probable: the vehicle is alive; falls within 100 ms of the kill. A ship does not send it.
+    bool alive() const { return has(Alive); }
     /// A player sits in the vehicle. Falls about 10 s after the kill; 0 on AI guns.
-    bool player_controlled = false;
+    bool player_controlled() const { return has(PlayerControlled); }
     /// The point under the player's aim, while player_controlled: heading in radians (the sign of
     /// the hull heading), and probable: pitch in radians and the distance in metres (10 km at most).
-    std::optional<float> aim_yaw{};
-    std::optional<float> aim_pitch{};
-    std::optional<float> aim_distance{};
-    std::vector<GroundWeaponSync> weapons{};
+    std::optional<float> aim_yaw() const { return aimed(aim[0]); }
+    std::optional<float> aim_pitch() const { return aimed(aim[1]); }
+    std::optional<float> aim_distance() const { return aimed(aim[2]); }
+
+    void set(uint8_t f, bool on) { flags = on ? flags | f : flags & ~f; }
+
+  private:
+    bool has(uint8_t f) const { return flags & f; }
+    std::optional<float> drive(float v) const { return has(HasDrive) ? std::optional<float>(v) : std::nullopt; }
+    std::optional<float> aimed(float v) const { return has(HasAim) ? std::optional<float>(v) : std::nullopt; }
+    std::optional<uint8_t> ship(uint8_t v) const { return is_ship() ? std::optional<uint8_t>(v) : std::nullopt; }
   };
 
   /// The decoded fields of a seeker block. The block length tells the seeker. Of a store in

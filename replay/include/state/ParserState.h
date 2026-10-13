@@ -163,8 +163,8 @@ public:
   std::pmr::vector<mpi::HitOutcome> HitOutcomes{get_allocator()};
   std::pmr::vector<mpi::AmmoEvent> AmmoEvents{get_allocator()};
   std::pmr::vector<mpi::ShotEvent> ShotEvents{get_allocator()};
-  /// Which of the event lists below the parse fills; set before LoadFromReader. The two sync lists hold one
-  /// event per unit per sync and cost the most memory (a long ground battle: 1.6 M ground syncs), so they are off.
+  /// Which of the event lists below the parse fills; set before LoadFromReader. The two sync lists cost the most
+  /// memory (a long ground battle: 1.6 M ground syncs, kept as 0.4 M state changes), so they are off.
   struct EventLists {
     bool sensors = true, designations = true, seekers = true, controls = true, spots = true, cockpit = true,
          spawns = true, rpms = true, ground_syncs = false, store_syncs = false;
@@ -174,6 +174,11 @@ public:
   std::pmr::vector<mpi::SeekerEvent> SeekerEvents{get_allocator()};
   std::pmr::vector<mpi::ControlEvent> ControlEvents{get_allocator()};
   std::pmr::vector<mpi::GroundSyncEvent> GroundSyncEvents{get_allocator()};
+  /// The weapons of GroundSyncEvents and their rounds; each event holds its range of them.
+  std::pmr::vector<mpi::GroundWeaponSync> GroundWeapons{get_allocator()};
+  std::pmr::vector<uint16_t> GroundRounds{get_allocator()};
+  /// Per uid: 1 + the index in GroundSyncEvents of the vehicle's last event, 0 before its first.
+  std::pmr::vector<uint32_t> GroundSyncLast{get_allocator()};
   std::pmr::vector<mpi::StoreSyncEvent> StoreSyncEvents{get_allocator()};
   std::pmr::vector<mpi::SpotEvent> SpotEvents{get_allocator()};
   std::pmr::vector<mpi::SpawnEvent> SpawnEvents{get_allocator()};

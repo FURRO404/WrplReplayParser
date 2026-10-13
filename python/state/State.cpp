@@ -96,7 +96,7 @@ void PyReplayState::include(py::module_ &m) {
     .def_readwrite("cockpit", &Keep::cockpit)
     .def_readwrite("spawns", &Keep::spawns)
     .def_readwrite("rpms", &Keep::rpms)
-    .def_readwrite("ground_syncs", &Keep::ground_syncs, "Off by default: one event per vehicle per sync")
+    .def_readwrite("ground_syncs", &Keep::ground_syncs, "Off by default: one event per vehicle state change")
     .def_readwrite("store_syncs", &Keep::store_syncs, "Off by default: one event per store per sync");
 
   py::class_<ParserState>(m, "ParserState")
@@ -154,7 +154,20 @@ void PyReplayState::include(py::module_ &m) {
     .def_readonly("controls", &ParserState::ControlEvents,
                   "The pilot's controls and the engines of each aircraft, from the flight-model syncs")
     .def_readonly("ground_syncs", &ParserState::GroundSyncEvents,
-                  "0xF074: motion, drive, turret angles and weapon state of each ground vehicle, ship and AI gun")
+                  "0xF074: motion, drive, turret angles and weapon state of each ground vehicle, ship and AI gun; "
+                  "an event only when the vehicle's state changed")
+    .def(
+      "ground_weapons",
+      [](const ParserState &s, const mpi::GroundSyncEvent &e) {
+        std::vector<PyGroundWeapon> out(e.weapon_count);
+        for (uint8_t i = 0; i < e.weapon_count; i++) {
+          const auto &w = s.GroundWeapons[e.weapons_begin + i];
+          auto rounds = s.GroundRounds.begin() + w.rounds_begin;
+          out[i] = {w, {rounds, rounds + w.round_count}};
+        }
+        return out;
+      },
+      py::arg("event"), "The weapons of one of ground_syncs, with their rounds")
     .def_readonly("store_syncs", &ParserState::StoreSyncEvents,
                   "0xF11A: server time and velocity of each missile or rocket in flight")
     .def_readonly("seekers", &ParserState::SeekerEvents,

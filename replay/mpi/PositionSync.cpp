@@ -3,6 +3,7 @@
 #include "Unit.h"
 #include "danet/dag_netUtils.h"
 #include "math/dag_mathAng.h"
+#include <algorithm>
 #include <cstring>
 
 bool separateServerSideDetection_g = true;
@@ -467,12 +468,13 @@ struct SubVehicleDynData {
 
 
 // AI guns have no unit object; their state is read all the same, into ev only.
-bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, mpi::GroundSyncEvent &ev) {
+bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, mpi::GroundSyncEvent &ev,
+                      mpi::GroundWeaponSync *weapons) {
   ZoneScoped;
   RET_FAIL(bs.Read(ev.spawn_counter));
   bool b1;
   RET_FAIL(bs.Read(b1));
-  ev.has_motion = b1;
+  ev.set(ev.HasMotion, b1);
   if (b1) {
     Point3 direction{};
     if (ref->val1) {
@@ -501,8 +503,9 @@ bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, mpi::Grou
       netutils::unpack_euler_16(vals, direction);
       // LOGI("{} {} {}", direction.x, direction.y, direction.z);
     }
-    bool bool3;
-    bs.Read(ev.awake);
+    bool bool3, awake = false;
+    bs.Read(awake);
+    ev.set(ev.Awake, awake);
     bs.Read(bool3);
     Point3 unit_position{};
     if (bool3) {
@@ -548,31 +551,23 @@ bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, mpi::Grou
       out_2.z = netutils::UNPACKS(temp[2], 100.0);
     }
     ev.velocity = out_2;
-    int8_t temp_vals[3];
-    RET_FAIL(bs.Read(temp_vals));
-    ev.angular_velocity.x = netutils::UNPACKS(temp_vals[0], PI);
-    ev.angular_velocity.y = netutils::UNPACKS(temp_vals[1], PI);
-    ev.angular_velocity.z = netutils::UNPACKS(temp_vals[2], PI);
+    RET_FAIL(bs.Read(ev.angular_raw));
     bool has_drive;
     RET_FAIL(bs.Read(has_drive));
     if (has_drive) {
-      int8_t drive[4];
-      RET_FAIL(bs.Read(drive));
       // The track scale is measured: the same 0.1266 m/s per step on 21 vehicle types.
-      ev.track_left = drive[0] * 0.1266f;
-      ev.track_right = drive[1] * 0.1266f;
-      ev.steer = drive[2] / 127.f;
-      ev.throttle = drive[3] / 127.f;
+      RET_FAIL(bs.Read(ev.drive_raw));
+      ev.set(ev.HasDrive, true);
     }
     RET_FAIL(bs.Read(ev.engine));
     // Only a ship sends this block. A ship then sends no flag_b6 and no alive bit; the rest of its state is
     // the same as a tank's (all 233,534 ship states of 3 naval battles read to the end).
     bool bool5;
     RET_FAIL(bs.Read(bool5));
-    ev.is_ship = bool5;
+    ev.set(ev.IsShip, bool5);
     if (bool5) {
       // A ship sends the drive bytes as zeros.
-      ev.track_left = ev.track_right = ev.steer = ev.throttle = std::nullopt;
+      ev.set(ev.HasDrive, false);
       uint8_t ship[6]; // s0..s2 water levels (probable), s3 = s4 throttle, s5 rudder
       uint8_t some_vals_2[2]; // never sent
       uint8_t w[4]; // w0..w2 unknown (127 without flooding), then the shaft count
@@ -580,20 +575,23 @@ bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, mpi::Grou
       if (bs.ReadBit()) {
         RET_FAIL(bs.Read(some_vals_2));
       }
-      RET_FAIL(bs.Read(ev.ship_flooding));
+      bool flooding;
+      RET_FAIL(bs.Read(flooding));
+      ev.set(ev.ShipFlooding, flooding);
       RET_FAIL(bs.Read(w));
-      RET_FAIL(w[3] <= 9);
+      RET_FAIL(w[3] <= ev.MaxShafts);
       std::copy_n(ship, 3, ev.ship_water);
-      ev.ship_throttle = ship[3];
-      ev.ship_rudder = ship[5];
-      ev.ship_shafts.resize(w[3]);
-      for (auto &b: ev.ship_shafts) {
-        RET_FAIL(bs.Read(b));
+      ev.ship_throttle_raw = ship[3];
+      ev.ship_rudder_raw = ship[5];
+      ev.shaft_count = w[3];
+      for (uint8_t i = 0; i < ev.shaft_count; i++) {
+        RET_FAIL(bs.Read(ev.shafts[i]));
       }
     } else {
-      bool bool6;
+      bool bool6, alive;
       RET_FAIL(bs.Read(bool6));
-      RET_FAIL(bs.Read(ev.alive));
+      RET_FAIL(bs.Read(alive));
+      ev.set(ev.Alive, alive);
     }
     bool bool8;
     RET_FAIL(bs.Read(bool8));
@@ -630,22 +628,23 @@ bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, mpi::Grou
       }
     }
   }
-  bool b2;
+  bool b2, player_controlled;
   RET_FAIL(bs.Read(b2));
-  RET_FAIL(bs.Read(ev.player_controlled));
+  RET_FAIL(bs.Read(player_controlled));
+  ev.set(ev.PlayerControlled, player_controlled);
   float turret_horizontal = 5000;
   for (int i = 0; i < ref->turret_count; i++) {
     auto weap = ref->ref_1 ? ref->ref_1->getWeapon(i) : nullptr;
-    auto &wev = ev.weapons[i];
+    auto &wev = weapons[i];
     bool bool1, bool2, bool3, bool4;
-    uint8_t val1, val2;
+    uint8_t val1;
     RET_FAIL(bs.Read(bool1));
-    wev.broken = bool1;
+    wev.flags |= wev.HasBroken | (bool1 ? wev.IsBroken : 0);
     RET_FAIL(bs.Read(val1));
     RET_FAIL(bs.Read(bool2));
     if (bool2) {
-      RET_FAIL(bs.Read(val2));
-      wev.heat = netutils::UNPACK(val2, 1.0);
+      RET_FAIL(bs.Read(wev.heat_raw));
+      wev.flags |= wev.HasHeat;
     }
     RET_FAIL(bs.Read(bool3));
     RET_FAIL(bs.Read(bool4));
@@ -666,8 +665,9 @@ bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, mpi::Grou
         RET_FAIL(bs.Read(tv2));
         turret_x = UNPACK_S16(tv1, PI);
         turret_y = UNPACK_S16(tv2, PI);
-        wev.turret_yaw = turret_x;
-        wev.turret_pitch = turret_y;
+        wev.yaw_raw = int16_t(tv1);
+        wev.pitch_raw = int16_t(tv2);
+        wev.flags |= wev.HasTurret;
         // The same two angles in 1/256 of a turn; up to 20 deg apart while the turret turns fast.
         RET_FAIL(bs.Read(tv18));
         RET_FAIL(bs.Read(tv28));
@@ -682,7 +682,7 @@ bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, mpi::Grou
           //;LOGI("extra_val: {}", extra_val);
         }
         // A ship sends its preset weapons first, then commonWeapons: not the unit's weapon order.
-        if (weap && weap->turret_desc && !ev.is_ship) {
+        if (weap && weap->turret_desc && !ev.is_ship()) {
           auto turret = weap->turret_desc.get();
           turret->setData({turret_x, turret_y, turret_z});
         }
@@ -752,6 +752,28 @@ bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, mpi::Grou
 }
 
 
+// True when the event repeats the vehicle's last stored event: everything after the time, the weapons and
+// their rounds. The records have no padding inside the compared bytes.
+static bool SameAsLast(const ParserState &state, const mpi::GroundSyncEvent &ev) {
+  using E = mpi::GroundSyncEvent;
+  using W = mpi::GroundWeaponSync;
+  static_assert(offsetof(E, spawn_counter) == 6 && offsetof(E, weapons_begin) == 64 && offsetof(W, rounds_begin) == 16);
+  if (ev.uid >= state.GroundSyncLast.size() || !state.GroundSyncLast[ev.uid])
+    return false;
+  const E &p = state.GroundSyncEvents[state.GroundSyncLast[ev.uid] - 1];
+  constexpr size_t from = offsetof(E, spawn_counter), to = offsetof(E, weapons_begin);
+  if (memcmp((const char *) &p + from, (const char *) &ev + from, to - from) != 0)
+    return false;
+  for (uint8_t i = 0; i < ev.weapon_count; i++) {
+    const W &a = state.GroundWeapons[p.weapons_begin + i], &b = state.GroundWeapons[ev.weapons_begin + i];
+    auto rounds = state.GroundRounds.begin();
+    if (memcmp(&a, &b, offsetof(W, rounds_begin)) != 0 ||
+        !std::equal(rounds + a.rounds_begin, rounds + a.rounds_begin + a.round_count, rounds + b.rounds_begin))
+      return false;
+  }
+  return true;
+}
+
 bool GMSync(ParserState &state, BitStream &bs) {
   ZoneScoped;
   uint16_t uid_lower;
@@ -788,21 +810,46 @@ bool GMSync(ParserState &state, BitStream &bs) {
         RET_FAIL(bs.Read(ref.val1));
         RET_FAIL(bs.Read(ref.turret_count));
         RET_FAIL(bs.Read(isCompressed));
-        mpi::GroundSyncEvent ev{state.curr_time_ms, uid_lower, ref.ref_1};
-        ev.weapons.resize(ref.turret_count);
+        mpi::GroundSyncEvent ev{state.curr_time_ms, uid_lower};
+        ev.unit = ref.ref_1;
+        ev.weapon_count = ref.turret_count;
+        // With the list kept, the weapons go to the pool, and are dropped again when the event is not
+        // kept (no state, a failed read, or the same state as before); else to a scratch array.
+        const bool keep = state.keep.ground_syncs;
+        struct Rollback {
+          ParserState &s;
+          size_t w, r;
+          bool active;
+          ~Rollback() {
+            if (active) {
+              s.GroundWeapons.resize(w);
+              s.GroundRounds.resize(r);
+            }
+          }
+        } rollback{state, state.GroundWeapons.size(), state.GroundRounds.size(), keep};
+        thread_local std::vector<mpi::GroundWeaponSync> scratch{};
+        mpi::GroundWeaponSync *weapons;
+        if (keep) {
+          ev.weapons_begin = uint32_t(state.GroundWeapons.size());
+          state.GroundWeapons.resize(ev.weapons_begin + ref.turret_count);
+          weapons = state.GroundWeapons.data() + ev.weapons_begin;
+        } else {
+          scratch.assign(ref.turret_count, {});
+          weapons = scratch.data();
+        }
         bool have_state = false;
         if (isCompressed) {
           auto &hist = state.NetDelta.getHistory(uid_lower);
           auto res = state.NetDelta.netDelta.readDelta(bs, &hist);
           if (res.ok) {
-            have_state = ParseVehicleInfo(state, res.bs, &ref, ev);
+            have_state = ParseVehicleInfo(state, res.bs, &ref, ev, weapons);
             if (!have_state && ref.ref_1 != nullptr) {
               LOGE("Failed to parse info for ground unit {} of uid {}", ref.ref_1->unit_name, ref.ref_1->uid);
             }
           }
         } else {
           bs.AlignReadToByteBoundary();
-          ParseVehicleInfo(state, bs, &ref, ev);
+          ParseVehicleInfo(state, bs, &ref, ev, weapons);
           G_ASSERT(false);
         }
         bool has_aim;
@@ -812,9 +859,10 @@ bool GMSync(ParserState &state, BitStream &bs) {
           // the distance twice. Sent exactly while the state says a player sits in the vehicle.
           float aim[4];
           RET_FAIL(bs.Read(aim));
-          ev.aim_yaw = -aim[0] * DEG_TO_RAD;
-          ev.aim_pitch = aim[1] * DEG_TO_RAD;
-          ev.aim_distance = aim[2];
+          ev.aim[0] = -aim[0] * DEG_TO_RAD;
+          ev.aim[1] = aim[1] * DEG_TO_RAD;
+          ev.aim[2] = aim[2];
+          ev.set(ev.HasAim, true);
         }
         bool bool8;
         RET_FAIL(bs.Read(bool8));
@@ -823,7 +871,7 @@ bool GMSync(ParserState &state, BitStream &bs) {
             bool t1;
             RET_FAIL(bs.Read(t1));
             if (t1) {
-              auto &w = ev.weapons[i];
+              auto &w = weapons[i];
               uint8_t ammo_types;
               float last_shot, ready;
               uint8_t count;
@@ -831,13 +879,18 @@ bool GMSync(ParserState &state, BitStream &bs) {
               RET_FAIL(bs.Read(last_shot));
               RET_FAIL(bs.Read(ready));
               RET_FAIL(bs.Read(count));
-              w.loaded_type = ammo_types & 15;
-              w.selected_type = ammo_types >> 4;
-              w.last_shot = last_shot;
-              w.ready = ready;
-              w.rounds.resize(count);
-              for (auto &r: w.rounds)
+              w.flags |= w.HasAmmo;
+              w.ammo_types = ammo_types;
+              w.last_shot_s = last_shot;
+              w.ready_s = ready;
+              w.round_count = count;
+              w.rounds_begin = uint32_t(state.GroundRounds.size());
+              for (uint8_t k = 0; k < count; k++) {
+                uint16_t r;
                 RET_FAIL(bs.Read(r));
+                if (keep)
+                  state.GroundRounds.push_back(r);
+              }
             }
           }
         }
@@ -851,8 +904,13 @@ bool GMSync(ParserState &state, BitStream &bs) {
           }
         }
         bs.AlignReadToByteBoundary();
-        if (have_state && state.keep.ground_syncs)
-          state.GroundSyncEvents.push_back(std::move(ev));
+        if (keep && have_state && !SameAsLast(state, ev)) {
+          if (ev.uid >= state.GroundSyncLast.size())
+            state.GroundSyncLast.resize(ev.uid + 1);
+          state.GroundSyncEvents.push_back(ev);
+          state.GroundSyncLast[ev.uid] = uint32_t(state.GroundSyncEvents.size());
+          rollback.active = false;
+        }
       }
     }
   }
