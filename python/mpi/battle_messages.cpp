@@ -267,6 +267,8 @@ void PyBattleMessages::include(py::module_ &m) {
       .def_property_readonly("roll", &mpi::ControlEvent::roll, "Roll stick, -1 to 1")
       .def_property_readonly("rudder", &mpi::ControlEvent::rudder, "Rudder pedals, -1 to 1")
       .def_property_readonly("flaps", &mpi::ControlEvent::flaps, "0 to 1")
+      .def_readonly("fire_mg", &mpi::ControlEvent::fire_mg, "Machine-gun trigger held")
+      .def_readonly("fire_cannon", &mpi::ControlEvent::fire_cannon, "Cannon trigger held")
       .def_property_readonly("airbrake", &mpi::ControlEvent::airbrake, "0 to 1")
       .def_property_readonly("wheel_brake", &mpi::ControlEvent::wheel_brake, "0 to 1")
       .def_property_readonly("throttle", &mpi::ControlEvent::throttle,

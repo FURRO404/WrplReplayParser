@@ -162,13 +162,18 @@ namespace mpi {
     /// The seven control bytes as sent; bytes 3, 4 and 6 have only been seen as 0.
     uint8_t controls[7]{};
     std::vector<EngineSync> engines{};
+    /// Gun triggers, sent only while a trigger is held: the round counters of the guns on
+    /// that trigger fall in the same sync. On a P-63 the four .50s are on the machine-gun
+    /// trigger and the 37 mm on the cannon trigger; a jet's gun is on the cannon trigger.
+    bool fire_mg = false;
+    bool fire_cannon = false;
 
     /// Stick and pedals, -1 to 1 in steps of 1/7, sign as sent. Pitch is positive for a pull.
     float pitch() const { return ((controls[0] & 15) - 8) / 7.f; }
     float roll() const { return ((controls[1] >> 4) - 8) / 7.f; }
     float rudder() const { return ((controls[1] & 15) - 8) / 7.f; }
-    /// 0 to 1 in steps of 1/7.
-    float flaps() const { return ((controls[0] >> 4) & 7) / 7.f; }
+    /// 0 to 1 in steps of 1/15.
+    float flaps() const { return (controls[0] >> 4) / 15.f; }
     /// 0 to 1 in steps of 1/15.
     float airbrake() const { return (controls[2] & 15) / 15.f; }
     float wheel_brake() const { return (controls[2] >> 4) / 15.f; }

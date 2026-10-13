@@ -273,10 +273,13 @@ bool FMSync(ParserState &state, BitStream &bs) {
           uint32_t some_uint;
           bs.Read(some_uint);
           bool _0x7330_val = bs.ReadBit();
-          bool v1 = bs.ReadBit();
-          if (v1) {
-            bool v2 = bs.ReadBit();
-            bool unk1 = bs.ReadBit();
+          bool triggers = bs.ReadBit();
+          if (triggers) {
+            control.fire_mg = bs.ReadBit();
+            control.fire_cannon = bs.ReadBit();
+            // A third trigger bit and one bit per gun follow; all were 0 in every replay seen.
+            // The count equals the number of guns on props (P-63 5, Bf 109 E 4, Bf 109 F 3)
+            // but not on jets (2 on a JAS 39C with one gun, 4 on a Mirage 2000 with two).
             bool unk2 = bs.ReadBit();
             uint8_t count = 0;
             bs.ReadBits(&count, 4);
@@ -407,6 +410,8 @@ bool FMSync(ParserState &state, BitStream &bs) {
     }
     // G_ASSERT(uid != 0); // WHY THE HELL CAN WE HAVE A UID THAT IS 0
   } while (uid != 0x7FF);
+  // In a client replay: the position of the author's own aircraft, equal to its sync
+  // position. All 0 in a server replay.
   float maybe_floats[3];
   bs.Read(maybe_floats);
   // some extra data here
