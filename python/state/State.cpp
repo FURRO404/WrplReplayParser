@@ -187,29 +187,26 @@ void PyReplayState::include(py::module_ &m) {
           // thrown from another thread
           ReplayPacket pkt{};
           bool cont = true;
+          // any exception goes back to the caller: one left here would terminate the whole process, and with it
+          // every other parse running in it
           if (func) {
-            py::gil_scoped_acquire gil;
             try {
               while (cont && rdr.getNextPacket(pkt)) {
                 BitSize_t start_offs = pkt.stream.GetReadOffset();
                 cont = state.ParsePacket(pkt);
                 pkt.stream.SetReadOffset(start_offs);
+                // the GIL only around the callback, so parses on other threads keep running meanwhile
+                py::gil_scoped_acquire gil;
                 func(&pkt);
               }
-            } catch (py::error_already_set &e) {
-              eptr = std::current_exception(); // catches python exception and rethrows it outside the thread
-            } catch (ExceptionException &e) {
-              eptr = std::current_exception();
-            } catch (AssertException &e) {
-              eptr = std::current_exception();
+            } catch (...) {
+              eptr = std::current_exception(); // python exceptions included, rethrown outside the thread
             }
           } else {
             try {
               while (rdr.getNextPacket(pkt) && state.ParsePacket(pkt))
                 ;
-            } catch (ExceptionException &e) {
-              eptr = std::current_exception();
-            } catch (AssertException &e) {
+            } catch (...) {
               eptr = std::current_exception();
             }
           }

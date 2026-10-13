@@ -1049,6 +1049,8 @@ namespace ecs {
 
   QueryCbResult GState::performQueryStoppable(EntityManager &mgr, QueryId h, const stoppable_query_cb_t &fun,
                                               void *user_data) {
+    // another parse can add an archetype, which rebuilds the queries under the unique lock
+    std::shared_lock lk(this->archetypes.archetypes_mtx);
     uint32_t index = h.index();
     auto &__restrict archDesc = archetypeQueries[index];
     if (!archDesc.getQueriesCount())
@@ -1104,6 +1106,8 @@ namespace ecs {
   }
 
   void GState::performQuery(EntityManager &mgr, QueryId h, const query_cb_t &fun, void *user_data) {
+    // another parse can add an archetype, which rebuilds the queries under the unique lock
+    std::shared_lock lk(this->archetypes.archetypes_mtx);
     uint32_t index = h.index();
     auto &__restrict archDesc = archetypeQueries[index];
     if (!archDesc.getQueriesCount())
