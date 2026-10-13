@@ -729,6 +729,9 @@ mpi::Message *BaseExtReflectable::dispatchMpiMessage(mpi::MessageID mid) {
     case MPI_PACKETS::UnitCamera: {
       return state->_new<mpi::CameraStateMessage>(this);
     }
+    case MPI_PACKETS::FmwRpm: {
+      return state->_new<mpi::RpmMessage>(this);
+    }
     case MPI_PACKETS::UnitHitEffects: {
       return state->_new<mpi::UnitHitEffectsMessage>(this);
     }
@@ -764,6 +767,11 @@ mpi::Message *BaseExtReflectable::dispatchMpiMessage(mpi::MessageID mid) {
 void BaseExtReflectable::applyMpiMessage(const mpi::Message *m) {
   ZoneScoped;
   switch (m->id) {
+    case MPI_PACKETS::FmwRpm: {
+      auto &e = state->RpmEvents.emplace_back(((const mpi::RpmMessage *) m)->rpm);
+      e.unit = owner_unit;
+      break;
+    }
     case MPI_PACKETS::UnitCamera: {
       auto camera_m = (mpi::CameraStateMessage *) m;
 

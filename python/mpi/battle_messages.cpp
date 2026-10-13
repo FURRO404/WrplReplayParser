@@ -171,6 +171,11 @@ void PyBattleMessages::include(py::module_ &m) {
         return d;
       }, "{id: value}; see CockpitEvent in GeneralObject.h for the ids that are known");
 
+  py::class_<mpi::RpmEvent>(mpi, "RpmEvent")
+      .def_readonly("time_ms", &mpi::RpmEvent::time_ms)
+      .def_readonly("unit", &mpi::RpmEvent::unit)
+      .def_readonly("rpm", &mpi::RpmEvent::rpm, "One per engine; a stopped jet engine reads 2000");
+
   py::class_<mpi::SpotEvent>(mpi, "SpotEvent")
       .def_readonly("time_ms", &mpi::SpotEvent::time_ms)
       .def_readonly("spotter_id", &mpi::SpotEvent::spotter_id, "uid of an aircraft, or 0x800 | uid of a ground vehicle")
@@ -399,6 +404,7 @@ void PyBattleMessages::include(py::module_ &m) {
   bind_readonly_vector_no_contain<std::pmr::vector<mpi::SpotEvent>>(m, "SpotEventList");
   bind_readonly_vector_no_contain<std::pmr::vector<mpi::SpawnEvent>>(m, "SpawnEventList");
   bind_readonly_vector_no_contain<std::pmr::vector<mpi::CockpitEvent>>(m, "CockpitEventList");
+  bind_readonly_vector_no_contain<std::pmr::vector<mpi::RpmEvent>>(m, "RpmEventList");
 
   py::class_<mpi::AwardMessage, mpi::IBattleMessage, std::unique_ptr<mpi::AwardMessage, py::nodelete>>(mpi,
                                                                                                        "AwardMessage")

@@ -25,6 +25,7 @@ namespace MPI_PACKETS {
     Rocket1 = 0xf11a,
     Rocket2 = 0xf0db,
     UnitCamera = 0xf0cc,
+    FmwRpm = 0xd047,
     // shots and hits
     GmDoStartFire = 0xf01b,
     GmDoStopFire = 0xf01c,
@@ -461,6 +462,23 @@ namespace mpi {
   public:
     CockpitMessage(IObject *o) : Message(o, MPI_PACKETS::ReplayCockpitParams) {}
     CockpitEvent cockpit{};
+  };
+
+  /// 0xD047 to an aircraft: the RPM of each engine. Every 3.1 s per aircraft in a server replay, every
+  /// 0.11 s for the author of a client replay. It follows cockpit id 81 with r = 0.97 to 1.00.
+  struct RpmEvent {
+    uint32_t time_ms = 0;
+    unit::Unit *unit = nullptr;
+    /// One per engine, in steps of about 9.55 (1 rad/s); a stopped jet engine reads 2000.
+    std::vector<uint16_t> rpm{};
+  };
+
+  class RpmMessage : public Message {
+    bool readPayload(ParserState *state) override;
+
+  public:
+    RpmMessage(IObject *o) : Message(o, MPI_PACKETS::FmwRpm) {}
+    RpmEvent rpm{};
   };
 
   /// Object 0xb/3: messages about the replay author's own client.

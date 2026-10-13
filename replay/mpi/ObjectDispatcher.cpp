@@ -389,6 +389,18 @@ namespace mpi {
     return true;
   }
 
+  bool RpmMessage::readPayload(ParserState *state) {
+    rpm.time_ms = state->curr_time_ms;
+    uint8_t head = 0; // engine count in the high nibble
+    if (!payload.Read(head))
+      return false;
+    rpm.rpm.resize(head >> 4);
+    for (auto &r: rpm.rpm)
+      if (!payload.Read(r))
+        return false;
+    return true;
+  }
+
   bool TankMessage::readPayload(ParserState *state) { return this->payload.Read(this->data); }
 
   void TankMessage::writePayload() { this->payload.Write(this->data); }

@@ -140,17 +140,20 @@ namespace mpi {
     TargetDesignationControlState state{};
   };
 
-  /// One engine of an aircraft at one flight-model sync.
+  /// One engine of an aircraft at one flight-model sync. The engine count equals the EngineN blocks of
+  /// the flight model, rocket boosters included.
   struct EngineSync {
-    uint8_t state = 0; ///< 7 while the engine runs, 8 once it has stopped; 0 and 6 occur for short times
-    /// Afterburner throttle of a jet, 1.0 to 1.1, sent only while above 1.0. A prop never
-    /// sends it, also at WEP.
+    /// 7 runs; 8 destroyed (health 0); a start on the ground goes 0, 1, 2, 3, 4, 5, 7; 6 is probably a
+    /// shut-down; a rocket booster reads 0 while not in use. At a kill it goes to 8 on jets, mostly 0 on props.
+    uint8_t state = 0;
+    /// Engine throttle with afterburner, 1.0 to 1.1, sent only while above 1.0 and only by engines with
+    /// Afterburner.Type 3 and AfterburnerBoost > 1.0. Never by props (also at WEP), jets without
+    /// afterburner, water injection or boosters. The sync of a dead aircraft never has it.
     std::optional<float> afterburner{};
-    /// Sent only while below 1.0. It falls in steps when the engine is hit and is 0 once
-    /// the engine has stopped: the engine's health.
+    /// Engine health, sent only below 1.0; it starts within 5 s of a hit and is 0 at state 8.
     std::optional<float> health{};
-    /// 0 to 255, always 0 on a jet. On a prop they open as the coolant gets hot: the
-    /// radiator flaps.
+    /// Radiator positions 0 to 255, 0 on a jet. Equal with a common radiator; water and oil differ
+    /// otherwise (which is which is not known). 0 for the other aircraft of a client replay.
     uint8_t radiators[2]{};
   };
 
@@ -159,7 +162,8 @@ namespace mpi {
     uint32_t time_ms = 0;
     unit::Unit *unit = nullptr;
     bool on_ground = false;
-    /// The seven control bytes as sent; bytes 3, 4 and 6 have only been seen as 0.
+    /// The seven control bytes as sent. Byte 6 is always 0. Probable: byte 3 is 15 with the bomb bay open,
+    /// the high nibble of byte 5 is the wing sweep.
     uint8_t controls[7]{};
     std::vector<EngineSync> engines{};
     /// Gun triggers, sent only while a trigger is held: the round counters of the guns on

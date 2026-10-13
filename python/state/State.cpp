@@ -132,6 +132,7 @@ void PyReplayState::include(py::module_ &m) {
                   "Target designations from the aircraft and ground vehicle syncs")
     .def_readonly("cockpit", &ParserState::CockpitEvents,
                   "0xD04A, client replays only: the author's cockpit instruments as (id, value) pairs")
+    .def_readonly("rpms", &ParserState::RpmEvents, "0xD047: the RPM of each engine of an aircraft")
     .def_readonly("spots", &ParserState::SpotEvents,
                   "0xF037: the spotter sees the spotted unit, which gets its red mark on the spotter's screen")
     .def_readonly("spawns", &ParserState::SpawnEvents,

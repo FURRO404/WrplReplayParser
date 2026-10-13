@@ -172,6 +172,7 @@ public:
   std::pmr::vector<mpi::SpotEvent> SpotEvents{get_allocator()};
   std::pmr::vector<mpi::SpawnEvent> SpawnEvents{get_allocator()};
   std::pmr::vector<mpi::CockpitEvent> CockpitEvents{get_allocator()};
+  std::pmr::vector<mpi::RpmEvent> RpmEvents{get_allocator()};
   // missionArea1 owns the ptrs
   std::pmr::vector<ObjectRewindState<MissionArea *, false, true> *> missionAreas1{get_allocator()};
   std::pmr::vector<ObjectRewindState<MissionArea *, false> *> missionAreas2{get_allocator()};
