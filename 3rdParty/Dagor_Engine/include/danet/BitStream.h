@@ -165,6 +165,35 @@ public:
       return true;
     }
 
+    // Fast path for short unaligned reads: one 8-byte big-endian window, when the buffer holds
+    // 8 bytes from the read position. Whole bytes come out in order and a last partial byte is
+    // right-aligned, as in the loop below.
+    const uint32_t byteOffs = readOffset >> 3;
+    if (bits <= 56 && byteOffs + 8 <= (bitsAllocated >> 3)) {
+      const uint8_t *src = dataPtr + byteOffs;
+      uint64_t w = 0;
+      for (int i = 0; i < 8; i++)
+        w = (w << 8) | src[i];
+      w <<= readmod8;
+      const uint32_t full = bits >> 3, rem = bits & 7;
+      for (uint32_t i = 0; i < full; i++) {
+        output[i] = uint8_t(w >> 56);
+        w <<= 8;
+      }
+      if (rem)
+        output[full] = uint8_t(w >> (64 - rem));
+      readOffset += bits;
+      return true;
+    }
+    if ((bits & 7) == 0) { // whole bytes from an unaligned offset: each takes the next byte's top bits
+      const uint8_t *src = dataPtr + byteOffs;
+      const uint32_t n = bits >> 3;
+      for (uint32_t i = 0; i < n; i++)
+        output[i] = uint8_t((src[i] << readmod8) | (src[i + 1] >> (8 - readmod8)));
+      readOffset += bits;
+      return true;
+    }
+
     memset(output, 0, bits2bytes(bits));
 
     uint32_t offs = 0;
