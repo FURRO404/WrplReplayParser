@@ -40,6 +40,31 @@ ParserState::ParserState(uint32_t player_count) {
 void ParserState::ownUnit(unit::Unit *unit) {
   owned_units.emplace_back(unit);
 }
+unit::Aircraft *ParserState::getPendingAircraft(uint16_t uid) const {
+  auto it = pending_aircraft.find(uid & 0x7FF);
+  return it == pending_aircraft.end() ? nullptr : it->second;
+}
+void ParserState::addPendingAircraft(std::unique_ptr<unit::Aircraft> unit) {
+  auto *ptr = unit.get();
+  owned_units.emplace_back(std::move(unit));
+  pending_aircraft.emplace(ptr->uid & 0x7FF, ptr);
+}
+unit::Aircraft *ParserState::takePendingAircraft(uint16_t uid) {
+  auto it = pending_aircraft.find(uid & 0x7FF);
+  if (it == pending_aircraft.end())
+    return nullptr;
+  auto *unit = it->second;
+  pending_aircraft.erase(it);
+  unit->provisional = false;
+  return unit;
+}
+std::vector<unit::Aircraft *> ParserState::getPendingAircraft() const {
+  std::vector<unit::Aircraft *> result;
+  result.reserve(pending_aircraft.size());
+  for (auto &[uid, aircraft] : pending_aircraft)
+    result.push_back(aircraft);
+  return result;
+}
 ParserState::ParserState(IReplay *replay) {
   auto header = replay->getHeader();
   if (!header)

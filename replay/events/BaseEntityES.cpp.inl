@@ -22,8 +22,12 @@ static void on_aircraft_appear_es(const ecs::EventEntityCreated &evt,
                                   const FlightModelWrapStorageComponent &unit_storage__aircraft, const int &uid,
                                   unit::UnitRef &unit__ref, ecs::EntityManager &manager) {
   G_ASSERT(unit__ref.unit == nullptr);
-  unit__ref.unit = new unit::Aircraft(manager.owned_by, static_cast<uint16_t>(uid));
-  manager.owned_by->ownUnit(unit__ref.unit);
+  unit__ref.unit = manager.owned_by->takePendingAircraft(static_cast<uint16_t>(uid));
+  if (!unit__ref.unit) {
+    unit__ref.unit = new unit::Aircraft(manager.owned_by, static_cast<uint16_t>(uid));
+    manager.owned_by->ownUnit(unit__ref.unit);
+  }
+  unit__ref.unit->uid = static_cast<uint16_t>(uid);
   G_ASSERT_LOG(unit__ref.unit->LoadFromStorage(unit_storage__aircraft), "Failed to load aircraft with uid {}", uid);
 }
 

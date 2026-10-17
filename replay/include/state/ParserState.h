@@ -21,6 +21,7 @@
 #include <memory>
 namespace unit {
   class Unit;
+  class Aircraft;
 }
 
 struct net_delta_t {
@@ -107,6 +108,7 @@ protected:
   // their weapons even after the owner entity disappears. Declared before the
   // entity manager so they also remain alive while it destroys its stores.
   std::vector<std::unique_ptr<unit::Unit>> owned_units;
+  std::unordered_map<uint16_t, unit::Aircraft *> pending_aircraft;
   friend unit::BallisticParams;
   friend unit::BulletSet;
 
@@ -122,6 +124,10 @@ protected:
 
 public:
   void ownUnit(unit::Unit *unit);
+  unit::Aircraft *getPendingAircraft(uint16_t uid) const;
+  void addPendingAircraft(std::unique_ptr<unit::Aircraft> unit);
+  unit::Aircraft *takePendingAircraft(uint16_t uid);
+  std::vector<unit::Aircraft *> getPendingAircraft() const;
   template<class T, class... Args>
   T *_new(Args &&...args) {
     return allocator._new<T>(std::forward<Args>(args)...);

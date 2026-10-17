@@ -10,6 +10,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <cstdlib>
+#include <cmath>
 
 std::vector<Rocket *> collect_all_rockets(ParserState &state);
 
@@ -101,6 +102,58 @@ static void check_store_owner(const char *path) {
   throw std::runtime_error("no suitable store and owner in test replay");
 }
 
+// This particular replay contains an aircraft sync 40 ms before ECS creation.
+static void check_early_aircraft_replay(const char *path) {
+  ServerReplay replay(path);
+  ParserState state(&replay);
+  std::unique_ptr<IReplayReader> reader(replay.getReplayReader());
+  unit::Aircraft *early = nullptr;
+  bool created = false;
+  bool reached_end = false;
+  ReplayPacket pkt{};
+  while (reader->getNextPacket(pkt)) {
+    if (!state.ParsePacket(pkt)) {
+      require(pkt.type == ReplayPacketType::EndMarker, "early-sync replay packet failed");
+      reached_end = true;
+      break;
+    }
+    if (pkt.type == ReplayPacketType::AircraftSmall && pkt.timestamp_ms == 84514) {
+      early = state.getPendingAircraft(400);
+      require(early && early->provisional, "real early aircraft not retained");
+      const auto &positions = early->positions.history();
+      require(positions.size() == 1 && positions[0].time_ms == 84514 &&
+              std::abs(positions[0].data.location.y - 5500.f) < 0.01f,
+              "real early aircraft position was lost");
+      size_t ammo_count = 0, sensor_count = 0, control_count = 0;
+      for (const auto &event : state.AmmoEvents)
+        if (event.time_ms == 84514 && event.unit == early && event.rounds_left == 300)
+          ++ammo_count;
+      for (const auto &event : state.SensorEvents)
+        if (event.time_ms == 84514 && event.unit == early)
+          ++sensor_count;
+      for (const auto &event : state.ControlEvents)
+        if (event.time_ms == 84514 && event.unit == early && event.engines.size() == 1)
+          ++control_count;
+      require(ammo_count == 6 && sensor_count == 1 && control_count == 1, "real early aircraft events were lost");
+    }
+    if (early && !created && state.getUnitObj(400) == early) {
+      require(pkt.timestamp_ms == 84554 && !early->provisional &&
+              early->unit_name == "f-86_canadair_german", "real aircraft creation did not reuse early data");
+      created = true;
+    }
+  }
+  require(reached_end && state.replay_length_ms == 1224969 && early && created &&
+          early->positions.history()[0].time_ms == 84514,
+          "early-sync replay did not complete with its original position");
+  bool early_seeker = false;
+  for (const auto &event : state.SeekerEvents)
+    if (event.time_ms == 86517 && event.unit && event.unit->uid == 399 &&
+        event.unit->created_at_ms == 86558 && event.unit->unit_name == "yak-38m")
+      early_seeker = true;
+  require(early_seeker, "early aircraft seeker was lost or attached to the wrong unit");
+  std::cout << "early aircraft replay reached end and retained its first sync\n";
+}
+
 int main() {
   const char *game_path = std::getenv("WRPL_TEST_GAME_PATH");
   if (!game_path || !*game_path) {
@@ -159,7 +212,96 @@ int main() {
   pkt.timestamp_ms = 20; pkt.stream = good_fm;
   require(state.ParsePacket(pkt), "valid aircraft rejected");
   require(state.AmmoEvents.size() == 1 && state.ControlEvents.size() == 1 && plane->positions.history().size() == 1, "aircraft commit");
+
+  // A sync can precede the ECS creation. Retain its data and identity, and
+  // attach the same aircraft when the corresponding creation arrives.
+  ParserState early(uint32_t(0));
+  ReplayPacket early_pkt{};
+  early_pkt.type = ReplayPacketType::AircraftSmall;
+  early_pkt.timestamp_ms = 100;
+  early_pkt.stream = aircraft(false);
+  require(early.ParsePacket(early_pkt), "early aircraft sync rejected");
+  auto *pending = early.getPendingAircraft(1);
+  require(pending && pending->provisional && pending->uid == 1, "missing provisional aircraft");
+  require(pending->positions.history().size() == 1 && pending->positions.history()[0].time_ms == 100,
+          "early aircraft position lost or retimed");
+  require(early.AmmoEvents.size() == 1 && early.AmmoEvents[0].unit == pending &&
+          early.ControlEvents.size() == 1 && early.ControlEvents[0].unit == pending,
+          "early aircraft events lost");
+  early_pkt.timestamp_ms = 120;
+  early_pkt.stream = aircraft(false);
+  require(early.ParsePacket(early_pkt), "second early aircraft sync rejected");
+  require(early.getPendingAircraft(1) == pending && pending->positions.history().size() == 2 &&
+          pending->positions.history()[1].time_ms == 120, "early syncs did not share history");
+  early_pkt.timestamp_ms = 130;
+  early_pkt.stream = aircraft(true);
+  require(!early.ParsePacket(early_pkt), "truncated early aircraft packet accepted");
+  require(early.getPendingAircraft().size() == 1 && pending->positions.history().size() == 2 &&
+          early.AmmoEvents.size() == 2 && early.ControlEvents.size() == 2,
+          "truncated packet leaked provisional data");
+  require(early.takePendingAircraft(1) == pending && !pending->provisional && early.getPendingAircraft().empty(),
+          "aircraft creation did not retain the provisional object");
+  early.setUnitData(1, pending, ecs::INVALID_ENTITY_ID);
+  early_pkt.timestamp_ms = 140;
+  early_pkt.stream = aircraft(false);
+  require(early.ParsePacket(early_pkt), "aircraft sync after creation rejected");
+  require(pending->positions.history().size() == 3 && pending->positions.history()[2].time_ms == 140 &&
+          early.ControlEvents.back().unit == pending, "post-creation history changed identity");
+  early_pkt.type = ReplayPacketType::EndMarker;
+  early_pkt.timestamp_ms = 200;
+  require(!early.ParsePacket(early_pkt) && early.finishedLoading(), "end marker");
+  early.rewindToMs(110);
+  require(pending->positions.getCurrIndex() == 0, "early position rewind");
+  early.rewindToMs(150);
+  require(pending->positions.getCurrIndex() == 2, "early position replay");
+
+  ParserState broken_early(uint32_t(0));
+  ReplayPacket broken_pkt{};
+  broken_pkt.type = ReplayPacketType::AircraftSmall;
+  broken_pkt.timestamp_ms = 100;
+  broken_pkt.stream = aircraft(true);
+  require(!broken_early.ParsePacket(broken_pkt) && broken_early.getPendingAircraft().empty() &&
+          broken_early.AmmoEvents.empty() && broken_early.ControlEvents.empty(),
+          "truncated packet created provisional aircraft");
+
+  ParserState reused(uint32_t(0));
+  ReplayPacket reused_pkt{};
+  reused_pkt.type = ReplayPacketType::AircraftSmall;
+  reused_pkt.timestamp_ms = 10;
+  reused_pkt.stream = aircraft(false);
+  require(reused.ParsePacket(reused_pkt), "first incarnation sync");
+  auto *first = reused.takePendingAircraft(1);
+  require(first != nullptr, "first incarnation missing");
+  reused.setUnitData(1, first, ecs::INVALID_ENTITY_ID);
+  reused.setUnitData(1, nullptr, ecs::INVALID_ENTITY_ID);
+  reused_pkt.timestamp_ms = 20;
+  reused_pkt.stream = aircraft(false);
+  require(reused.ParsePacket(reused_pkt), "second incarnation sync");
+  auto *second = reused.getPendingAircraft(1);
+  require(second && second != first && first->positions.history().size() == 1 &&
+          second->positions.history().size() == 1 && reused.ControlEvents.back().unit == second,
+          "reused UID retained the old aircraft");
+  reused_pkt.type = ReplayPacketType::EndMarker;
+  reused_pkt.timestamp_ms = 30;
+  require(!reused.ParsePacket(reused_pkt) && reused.getPendingAircraft(1) == second && second->provisional &&
+          second->positions.history()[0].time_ms == 20,
+          "unresolved aircraft data was lost at end of replay");
+
+  ParserState other_type(uint32_t(0));
+  auto *tank = new unit::Tank(&other_type, 1);
+  other_type.ownUnit(tank);
+  other_type.setUnitData(1, tank, ecs::INVALID_ENTITY_ID);
+  ReplayPacket other_pkt{};
+  other_pkt.type = ReplayPacketType::AircraftSmall;
+  other_pkt.timestamp_ms = 10;
+  other_pkt.stream = aircraft(false);
+  require(other_type.ParsePacket(other_pkt) && other_type.getPendingAircraft(1) &&
+          other_type.ControlEvents.back().unit == other_type.getPendingAircraft(1),
+          "aircraft sync with an existing non-aircraft UID was lost");
+
   std::cout << "detection, ground and aircraft checks passed\n";
   if (const char *replay_path = std::getenv("WRPL_TEST_REPLAY_PATH"); replay_path && *replay_path)
     check_store_owner(replay_path);
+  if (const char *replay_path = std::getenv("WRPL_TEST_EARLY_REPLAY_PATH"); replay_path && *replay_path)
+    check_early_aircraft_replay(replay_path);
 }

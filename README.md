@@ -13,9 +13,9 @@ Windows: MSYS2 minGW, MSVC
 
 Linux (WSL2) gcc
 
-## Known aircraft sync limitation
+## Aircraft syncs before entity creation
 
-Some valid replays contain an aircraft sync before the corresponding ECS unit is created. The parser currently requires the unit to exist when it reads the sync, so `LoadFromReader` raises `RuntimeError` and discards the aircraft updates from that packet. For example, server replay `127b004900163e25` has a sync for UID 400 at 84.514 seconds and creates that unit at 84.554 seconds. Handling this ordering remains open; the failure does not necessarily indicate a malformed packet.
+Some replays contain an aircraft sync before the corresponding ECS unit is created. The parser retains that sync and attaches it to the next aircraft creation with the same low 11-bit UID. Until then, the aircraft has `provisional == True`; its UID, positions and enabled event data are available, but its identity and storage details are not yet known. `ParserState.pending_aircraft` lists aircraft still waiting for creation, including any whose creation never appears. The sync does not provide a confirmed incarnation identifier, so matching an unresolved sync across a later reuse of the UID can be ambiguous. These properties describe what has been loaded, and do not change when the parser is rewound. A malformed aircraft packet still causes `LoadFromReader` to raise `RuntimeError`, with its partial aircraft updates discarded.
 
 # TODO
 

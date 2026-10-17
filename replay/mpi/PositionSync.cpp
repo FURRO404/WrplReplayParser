@@ -283,6 +283,8 @@ bool FMSync(ParserState &state, BitStream &bs) {
   } rollback{state, state.AmmoEvents.size(), state.ControlEvents.size(), state.SensorEvents.size(),
              state.DesignationEvents.size(), state.SeekerEvents.size()};
   std::vector<std::pair<unit::Aircraft *, SpaceTimeEuler>> positions;
+  // New provisional units are owned locally until the entire packet is valid.
+  std::vector<std::unique_ptr<unit::Aircraft>> new_aircraft;
   uint16_t uid = 0;
   do {
     bool uid_serialized;
@@ -308,11 +310,21 @@ bool FMSync(ParserState &state, BitStream &bs) {
         // if both true, then we do nothing
         if (!(lVar30lessThan0 && cVar4NE0)) {
           auto ref = state.getUnitObj(uid);
-          if (!ref)
-            return false;
-          auto unit = ref->AsAircraft();
+          auto unit = ref ? ref->AsAircraft() : nullptr;
           if (!unit)
-            return false;
+            unit = state.getPendingAircraft(uid);
+          if (!unit) {
+            auto it = std::find_if(new_aircraft.begin(), new_aircraft.end(),
+                                   [uid](const auto &aircraft) { return aircraft->uid == uid; });
+            if (it != new_aircraft.end()) {
+              unit = it->get();
+            } else {
+              auto aircraft = std::make_unique<unit::Aircraft>(&state, uid);
+              aircraft->provisional = true;
+              unit = aircraft.get();
+              new_aircraft.push_back(std::move(aircraft));
+            }
+          }
           mpi::ControlEvent control{state.curr_time_ms, unit};
           RET_FAIL(bs.Read(control.on_ground));
           uint32_t some_uint;
@@ -351,11 +363,8 @@ bool FMSync(ParserState &state, BitStream &bs) {
           // what carries meaning, and finding it is left to the reader, as with the
           // ground counter this joins.
           for (int i = 0; i < zig_val; i++) {
-            // ReadZigZag leaves the value untouched when it fails, so a short read
-            // would push whatever was on the stack into the ammo stream. The start is
-            // -1 rather than 0 because RET_FAIL only asserts in a debug build: there a
-            // failed read falls through, and the check below then drops the record
-            // instead of reporting an empty barrel.
+            // ReadZigZag leaves the value untouched on failure; reject a short read
+            // before it can be published as an ammunition count.
             int rounds_left = -1, extra = 0;
             RET_FAIL(bs.ReadZigZag(rounds_left));
             RET_FAIL(bs.ReadZigZag(extra));
@@ -473,6 +482,8 @@ bool FMSync(ParserState &state, BitStream &bs) {
   // position. All 0 in a server replay.
   float maybe_floats[3];
   RET_FAIL(bs.Read(maybe_floats));
+  for (auto &unit : new_aircraft)
+    state.addPendingAircraft(std::move(unit));
   for (const auto &[unit, position] : positions) {
     *unit->positions.reserveOne() = position;
     unit->positions.checkAndPush(&state);

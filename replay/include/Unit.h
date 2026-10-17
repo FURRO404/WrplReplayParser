@@ -263,6 +263,9 @@ namespace unit {
     FM_DVMReflectable fm_dvm_data{state};
 
   public:
+    /// True when a sync arrived before its ECS creation. The same object is filled
+    /// from the creation record when it arrives; it can remain provisional if it does not.
+    bool provisional = false;
     const char *getUnitTypeName() override;
     explicit Aircraft(ParserState *state, uint16_t uid) : Unit(state, uid, AircraftType) {
       base_data = &fmv_data;

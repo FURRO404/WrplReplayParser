@@ -108,6 +108,15 @@ void PyReplayState::include(py::module_ &m) {
     .def_readonly("keep", &ParserState::keep, "Event list switches, e.g. st.keep.ground_syncs = True")
     .def("getUnitEid", &ParserState::getUnitEid, py::arg("uid"))
     .def("getUnitRef", &ParserState::getUnitObj, py::arg("uid"), py::keep_alive<0, 1>())
+    .def_property_readonly("pending_aircraft", [](py::object self) {
+      auto &state = self.cast<ParserState &>();
+      py::list result;
+      for (auto *aircraft : state.getPendingAircraft())
+        result.append(py::cast(aircraft, py::return_value_policy::reference_internal, self));
+      return result;
+    },
+                           "Aircraft with sync data but no matching ECS creation yet. Their UID and positions "
+                           "remain available if creation never arrives.")
     .def_readonly("players", &ParserState::players)
     .def_readonly("teams", &ParserState::teams)
     .def_readonly("gen_state", &ParserState::gen_state)
