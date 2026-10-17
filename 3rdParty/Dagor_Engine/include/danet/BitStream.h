@@ -315,12 +315,19 @@ public:
     if (!ReadCompressed(numberOfBitsUsed))
       return false;
     AlignReadToByteBoundary();
-    if (readOffset + numberOfBitsUsed > bitsUsed)
+    if (readOffset > bitsUsed || numberOfBitsUsed > bitsUsed - readOffset)
       return false;
-    bs.bitsUsed = numberOfBitsUsed;
-    uint32_t bytesToCopy = bits2bytes(numberOfBitsUsed);
+    uint32_t bytesToCopy = numberOfBitsUsed / 8 + (numberOfBitsUsed % 8 != 0);
+    // The nested stream is byte-aligned and the final partial byte is stored
+    // in full. Validate those padding bits as well as the logical bit count.
+    if (uint64_t(bytesToCopy) * 8 > bitsUsed - readOffset)
+      return false;
+    bs.bitsUsed = 0;
+    bs.readOffset = 0;
     bs.reserveBits(bytes2bits(bytesToCopy));
-    memcpy(bs.GetData(), GetData() + bits2bytes(GetReadOffset()), bytesToCopy);
+    bs.bitsUsed = numberOfBitsUsed;
+    if (bytesToCopy)
+      memcpy(bs.GetData(), GetData() + bits2bytes(GetReadOffset()), bytesToCopy);
     SetReadOffset(GetReadOffset() + bytes2bits(bytesToCopy));
     return true;
   }

@@ -17,6 +17,7 @@
 #include "memory/dag_memBase.h"
 #include "StateRewinder.h"
 #include "mpi/Ballistics.h"
+#include <atomic>
 namespace unit {
   class Unit;
 }
@@ -173,6 +174,9 @@ public:
   std::pmr::vector<mpi::DesignationEvent> DesignationEvents{get_allocator()};
   std::pmr::vector<mpi::SeekerEvent> SeekerEvents{get_allocator()};
   std::pmr::vector<mpi::ControlEvent> ControlEvents{get_allocator()};
+  /// Identifies the owning state even if its address is reused after destruction.
+  inline static std::atomic<uint64_t> next_ground_owner_id{1};
+  const uint64_t ground_owner_id = next_ground_owner_id.fetch_add(1, std::memory_order_relaxed);
   std::pmr::vector<mpi::GroundSyncEvent> GroundSyncEvents{get_allocator()};
   /// The weapons of GroundSyncEvents and their rounds; each event holds its range of them.
   std::pmr::vector<mpi::GroundWeaponSync> GroundWeapons{get_allocator()};

@@ -23,8 +23,8 @@ struct SensorsControlStates {
   float unpacked_1 = 0;
   float unpacked_2 = 0;
   float unpacked_3 = 0;
-  int field149_0xa4 = 0;
-  int field150_0xa8 = 0;
+  int unknown_field_149 = 0; ///< signed 2-bit value, present when has_unknown_fields_149_150
+  int unknown_field_150 = 0; ///< signed 2-bit value, present when has_unknown_fields_149_150
   uint8_t field132_0x84 = 0;
   uint8_t field133_0x85 = 0;
   std::vector<uint32_t> field4_0x4{};
@@ -33,13 +33,17 @@ struct SensorsControlStates {
   uint8_t field137_0x89 = 0;
   uint8_t field138_0x8a = 0;
   float some_data_1{};
-  float some_data_2{};
-  float some_data_3{};
+  float unknown_field_2{}; ///< unknown field 2: kind 1 normalized int16; kinds 2/4 float32
+  float unknown_field_3{}; ///< unknown field 3: float32, sent for kinds 2/4 when their data is present
   float some_data_4{};
   float some_data_5{};
-  char some_data_6[4]{};
-  int some_data_7;
-  float field147_0xa8;
+  /// Field 6: four raw bytes for kind 2; kind 1 byte 0 is raw and byte 1 holds a decoded 1-bit value.
+  char unknown_field_6_data[4]{};
+  int32_t some_data_7{};
+  float unknown_field_147{}; ///< unknown field 147: float32, sent for kind 2 when on
+  bool has_unknown_field_6_byte0 = false;
+  bool has_unknown_fields_149_150 = false; ///< also indicates field 6 byte 1 is present
+  bool has_kind4_state = false;
 
   bool deserialize(BitStream &bs);
 
@@ -85,29 +89,37 @@ private:
 };
 
 struct TargetDesignationControlState {
-  uint8_t v1;
-  uint8_t v2;
-  bool v3;
-  Point3 v4;
-  bool write_compressed;
-  float v5;
-  Point3 v6;
-  Point3 v7;
-  bool v8;
-  Point3 v9;
-  uint8_t v10;
-  float v11;
-  bool v12;
-  bool v13;
-  uint8_t v14;
-  uint32_t v15;
+  // Numbers are stable identifiers from the original decoder, not semantic names.
+  // Point fields have three float32 components; their units and frames are unknown.
+  uint8_t unknown_field_1{}; ///< 8-bit, always present
+  uint8_t unknown_field_2{}; ///< 8-bit, always present
+  bool has_unknown_field_4{}; ///< 1-bit presence flag, formerly field 3
+  Point3 unknown_field_4{}; ///< three float32 components, present when has_unknown_field_4
+  bool uses_compressed_vector{}; ///< selects fields 6/7 and the encoding of field 9
+  float unknown_field_5{}; ///< float32, always present
+  Point3 unknown_field_6{}; ///< three float32 components, only when uses_compressed_vector
+  Point3 unknown_field_7{}; ///< three float32 components, only when not uses_compressed_vector
+  bool unknown_field_8{}; ///< 1-bit, always present
+  /// Three decoded float32 components, always present. Compressed: three signed 16-bit values
+  /// scaled to 4000; otherwise three float32 values. Units and reference frame are unknown.
+  Point3 unknown_field_9{};
+  uint8_t unknown_field_10{}; ///< 1-bit value, always present
+  float unknown_field_11{}; ///< normalized unsigned 8-bit value, only when has_unknown_field_11
+  bool unknown_field_12{}; ///< 1-bit bool, always present
+  bool unknown_field_13{}; ///< 1-bit, always present
+  uint8_t unknown_field_14{}; ///< 8-bit, only when has_unknown_field_14
+  uint32_t unknown_field_15{}; ///< 32-bit, only when has_unknown_field_15
+  bool has_unknown_field_11{};
+  bool has_unknown_field_14{};
+  bool has_unknown_field_15{};
 
   bool deserialize(BitStream &bs);
 
   /// Unit uid of the designated target (the radar's track, or its TWS designation). Only a
-  /// kind-6 record whose v15 is 0xFFFF0000 | uid names one; other v15 values are not uids.
+  /// kind-6 record whose field 15 is 0xFFFF0000 | uid names one; other values are not uids.
   std::optional<uint16_t> target_uid() const {
-    return v1 == 6 && (v15 >> 16) == 0xFFFF ? std::optional<uint16_t>(v15 & 0xFFFF) : std::nullopt;
+    return unknown_field_1 == 6 && has_unknown_field_15 && (unknown_field_15 >> 16) == 0xFFFF
+             ? std::optional<uint16_t>(unknown_field_15 & 0xFFFF) : std::nullopt;
   }
 };
 
@@ -207,7 +219,7 @@ namespace mpi {
     float lost_for = 0;
     /// SeekerWeapon only: seconds since launch, in steps of 1/48 s.
     std::optional<float> flight_time{};
-    bool head_b = false; ///< SeekerWeapon only: the bit before the block
+    bool unknown_header_bit = false; ///< unknown 1-bit field before the block, SeekerWeapon only
     uint32_t bits = 0;
     /// The bits as BitStream::ReadBits gives them: whole bytes first, the last
     /// partial byte right-aligned.
@@ -221,7 +233,7 @@ namespace mpi {
     ecs::EntityId eid{};
     /// Server time in steps of 1/48 s; 0 to 42 ms after the packet time.
     float server_time = 0;
-    /// World velocity, m/s (int16 / 16).
+    /// World velocity, m/s (signed 16-bit component scaled by 2000 / 32767).
     Point3 velocity{};
     /// Seconds since launch, in steps of 1/48 s.
     std::optional<float> flight_time{};
@@ -256,8 +268,10 @@ namespace mpi {
     /// Ammunition type in the gun and the type that comes next, indexes into rounds.
     std::optional<uint8_t> loaded_type() const { return ammo<uint8_t>(ammo_types & 15); }
     std::optional<uint8_t> selected_type() const { return ammo<uint8_t>(ammo_types >> 4); }
-    /// Battle time in seconds of the weapon's last shot, and of the moment it can fire again.
+    /// Battle time in seconds of the weapon's last shot when the ammo record is present.
     std::optional<float> last_shot() const { return ammo<float>(last_shot_s); }
+    /// Raw ready field in seconds when the ammo record is present. Zero is possible even
+    /// after a shot; its meaning and when it represents a usable timestamp are unknown.
     std::optional<float> ready() const { return ammo<float>(ready_s); }
 
   private:
@@ -307,6 +321,7 @@ namespace mpi {
     uint8_t shafts[MaxShafts]{};
     uint8_t weapon_count = 0;
     uint32_t weapons_begin = 0; ///< index into ParserState::GroundWeapons
+    uint64_t owner_id = 0; ///< identity of the ParserState that owns the weapon pools
 
     bool has_motion() const { return has(HasMotion); }
     /// The ship block was sent (some AI ships send the tank layout).
@@ -336,7 +351,7 @@ namespace mpi {
     /// A player sits in the vehicle. Falls about 10 s after the kill; 0 on AI guns.
     bool player_controlled() const { return has(PlayerControlled); }
     /// The point under the player's aim, while player_controlled: heading in radians (the sign of
-    /// the hull heading), and probable: pitch in radians and the distance in metres (10 km at most).
+    /// the hull heading), and probable: pitch in radians and the distance in metres.
     std::optional<float> aim_yaw() const { return aimed(aim[0]); }
     std::optional<float> aim_pitch() const { return aimed(aim[1]); }
     std::optional<float> aim_distance() const { return aimed(aim[2]); }

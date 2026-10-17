@@ -226,14 +226,47 @@ void PyBattleMessages::include(py::module_ &m) {
                              "Scan centre azimuth in radians, relative to the vehicle")
       .def_property_readonly("scan_el", [](const mpi::SensorEvent &e) { return e.state.scan_el(); },
                              "Scan centre elevation in radians, relative to the vehicle")
-      .def_property_readonly("f2", [](const mpi::SensorEvent &e) { return e.state.some_data_2; })
-      .def_property_readonly("f3", [](const mpi::SensorEvent &e) { return e.state.some_data_3; })
-      .def_property_readonly("f147", [](const mpi::SensorEvent &e) { return e.state.field147_0xa8; })
-      .def_property_readonly("b6", [](const mpi::SensorEvent &e) {
-        return py::bytes(e.state.some_data_6, sizeof(e.state.some_data_6));
-      })
-      .def_property_readonly("i149", [](const mpi::SensorEvent &e) { return e.state.field149_0xa4; })
-      .def_property_readonly("i150", [](const mpi::SensorEvent &e) { return e.state.field150_0xa8; })
+      .def_property_readonly("unknown_field_2", [](const mpi::SensorEvent &e) -> std::optional<float> {
+        const auto &s = e.state;
+        return ((s.kind() == 1 && s.has_state) || (s.kind() == 2 && s.on()) ||
+                (s.kind() == 4 && s.has_kind4_state)) ? std::optional<float>(s.unknown_field_2) : std::nullopt;
+      }, "Unknown field 2: float32; kind 1 is a normalized signed 16-bit value, kinds 2/4 send float32. "
+         "None when the kind's data was absent; units and frame unknown")
+      .def_property_readonly("unknown_field_3", [](const mpi::SensorEvent &e) -> std::optional<float> {
+        const auto &s = e.state;
+        return ((s.kind() == 2 && s.on()) || (s.kind() == 4 && s.has_kind4_state))
+                 ? std::optional<float>(s.unknown_field_3) : std::nullopt;
+      }, "Unknown field 3: float32 for kind 2 when on or kind 4 when its data is present; otherwise None. "
+         "Units and frame unknown")
+      .def_property_readonly("unknown_field_147", [](const mpi::SensorEvent &e) -> std::optional<float> {
+        const auto &s = e.state;
+        return s.kind() == 2 && s.on() ? std::optional<float>(s.unknown_field_147) : std::nullopt;
+      }, "Unknown field 147: float32, kind 2 when on; otherwise None. Units and frame unknown")
+      .def_property_readonly("unknown_field_6_data", [](const mpi::SensorEvent &e) -> py::object {
+        const auto &s = e.state;
+        if (s.kind() == 2 && s.on())
+          return py::bytes(s.unknown_field_6_data, sizeof(s.unknown_field_6_data));
+        if (s.kind() == 1 && s.has_state && (s.has_unknown_field_6_byte0 || s.has_unknown_fields_149_150))
+          return py::bytes(s.unknown_field_6_data, sizeof(s.unknown_field_6_data));
+        return py::none();
+      }, "Unknown field 6: four raw bytes for kind 2 when on. For kind 1 with state, byte 0 is a raw "
+         "8-bit value and byte 1 holds a decoded 1-bit value; either may be absent. Consult "
+         "has_unknown_field_6_byte0 and has_unknown_fields_149_150. Other bytes are zero. "
+         "None if no values were sent")
+      .def_property_readonly("has_unknown_field_6_byte0", [](const mpi::SensorEvent &e) {
+        return e.state.kind() == 1 && e.state.has_state && e.state.has_unknown_field_6_byte0;
+      }, "Kind 1 field 6 byte 0 presence flag; false for other sensor kinds")
+      .def_property_readonly("has_unknown_fields_149_150", [](const mpi::SensorEvent &e) {
+        return e.state.kind() == 1 && e.state.has_state && e.state.has_unknown_fields_149_150;
+      }, "Kind 1 presence flag for fields 149/150 and field 6 byte 1; false for other kinds")
+      .def_property_readonly("unknown_field_149", [](const mpi::SensorEvent &e) -> std::optional<int> {
+        return e.state.kind() == 1 && e.state.has_state && e.state.has_unknown_fields_149_150
+                 ? std::optional<int>(e.state.unknown_field_149) : std::nullopt;
+      }, "Unknown field 149: signed 2-bit value for kind 1 when its optional byte is present; otherwise None")
+      .def_property_readonly("unknown_field_150", [](const mpi::SensorEvent &e) -> std::optional<int> {
+        return e.state.kind() == 1 && e.state.has_state && e.state.has_unknown_fields_149_150
+                 ? std::optional<int>(e.state.unknown_field_150) : std::nullopt;
+      }, "Unknown field 150: signed 2-bit value for kind 1 when its optional byte is present; otherwise None")
       .def_property_readonly("contacts",
                              [](const mpi::SensorEvent &e) {
                                py::list out;
@@ -249,22 +282,46 @@ void PyBattleMessages::include(py::module_ &m) {
       .def_readonly("time_ms", &mpi::DesignationEvent::time_ms)
       .def_readonly("unit", &mpi::DesignationEvent::unit)
       .def_readonly("index", &mpi::DesignationEvent::index)
-      .def_property_readonly("v1", [](const mpi::DesignationEvent &e) { return e.state.v1; })
-      .def_property_readonly("v2", [](const mpi::DesignationEvent &e) { return e.state.v2; })
-      .def_property_readonly("v3", [](const mpi::DesignationEvent &e) { return e.state.v3; })
-      .def_property_readonly("v4", [](const mpi::DesignationEvent &e) { return e.state.v4; })
-      .def_property_readonly("compressed", [](const mpi::DesignationEvent &e) { return e.state.write_compressed; })
-      .def_property_readonly("v5", [](const mpi::DesignationEvent &e) { return e.state.v5; })
-      .def_property_readonly("v6", [](const mpi::DesignationEvent &e) { return e.state.v6; })
-      .def_property_readonly("v7", [](const mpi::DesignationEvent &e) { return e.state.v7; })
-      .def_property_readonly("v8", [](const mpi::DesignationEvent &e) { return e.state.v8; })
-      .def_property_readonly("v9", [](const mpi::DesignationEvent &e) { return e.state.v9; })
-      .def_property_readonly("v10", [](const mpi::DesignationEvent &e) { return e.state.v10; })
-      .def_property_readonly("v11", [](const mpi::DesignationEvent &e) { return e.state.v11; })
-      .def_property_readonly("v12", [](const mpi::DesignationEvent &e) { return e.state.v12; })
-      .def_property_readonly("v13", [](const mpi::DesignationEvent &e) { return e.state.v13; })
-      .def_property_readonly("v14", [](const mpi::DesignationEvent &e) { return e.state.v14; })
-      .def_property_readonly("v15", [](const mpi::DesignationEvent &e) { return e.state.v15; })
+      .def_property_readonly("unknown_field_1", [](const mpi::DesignationEvent &e) { return e.state.unknown_field_1; },
+                             "Unknown field 1: unsigned 8-bit value, always present")
+      .def_property_readonly("unknown_field_2", [](const mpi::DesignationEvent &e) { return e.state.unknown_field_2; },
+                             "Unknown field 2: unsigned 8-bit value, always present")
+      .def_property_readonly("has_unknown_field_4", [](const mpi::DesignationEvent &e) { return e.state.has_unknown_field_4; },
+                             "Field 3: 1-bit presence flag for unknown field 4")
+      .def_property_readonly("unknown_field_4", [](const mpi::DesignationEvent &e) -> std::optional<Point3> {
+        return e.state.has_unknown_field_4 ? std::optional<Point3>(e.state.unknown_field_4) : std::nullopt;
+      }, "Unknown field 4: three float32 components if field 3 is set, otherwise None; units and frame unknown")
+      .def_property_readonly("uses_compressed_vector", [](const mpi::DesignationEvent &e) { return e.state.uses_compressed_vector; },
+                             "1-bit flag selecting fields 6/7 and field 9 encoding")
+      .def_property_readonly("unknown_field_5", [](const mpi::DesignationEvent &e) { return e.state.unknown_field_5; },
+                             "Unknown field 5: float32, always present; units unknown")
+      .def_property_readonly("unknown_field_6", [](const mpi::DesignationEvent &e) -> std::optional<Point3> {
+        return e.state.uses_compressed_vector ? std::optional<Point3>(e.state.unknown_field_6) : std::nullopt;
+      }, "Unknown field 6: three float32 components when uses_compressed_vector, otherwise None; units and frame unknown")
+      .def_property_readonly("unknown_field_7", [](const mpi::DesignationEvent &e) -> std::optional<Point3> {
+        return !e.state.uses_compressed_vector ? std::optional<Point3>(e.state.unknown_field_7) : std::nullopt;
+      }, "Unknown field 7: three float32 components when not uses_compressed_vector, otherwise None; units and frame unknown")
+      .def_property_readonly("unknown_field_8", [](const mpi::DesignationEvent &e) { return e.state.unknown_field_8; },
+                             "Unknown field 8: 1-bit boolean, always present")
+      .def_property_readonly("unknown_field_9", [](const mpi::DesignationEvent &e) { return e.state.unknown_field_9; },
+                             "Unknown field 9: three decoded float32 components, always present. When "
+                             "uses_compressed_vector, three signed 16-bit values scaled to 4000; otherwise three "
+                             "float32 values. Units and frame unknown")
+      .def_property_readonly("unknown_field_10", [](const mpi::DesignationEvent &e) { return e.state.unknown_field_10; },
+                             "Unknown field 10: 1-bit value, always present")
+      .def_property_readonly("unknown_field_11", [](const mpi::DesignationEvent &e) -> std::optional<float> {
+        return e.state.has_unknown_field_11 ? std::optional<float>(e.state.unknown_field_11) : std::nullopt;
+      }, "Unknown field 11: optional unsigned 8-bit value normalized to float32 between 0 and 1; None when absent")
+      .def_property_readonly("unknown_field_12", [](const mpi::DesignationEvent &e) { return e.state.unknown_field_12; },
+                             "Unknown field 12: 1-bit boolean, always present")
+      .def_property_readonly("unknown_field_13", [](const mpi::DesignationEvent &e) { return e.state.unknown_field_13; },
+                             "Unknown field 13: 1-bit boolean, always present")
+      .def_property_readonly("unknown_field_14", [](const mpi::DesignationEvent &e) -> std::optional<uint8_t> {
+        return e.state.has_unknown_field_14 ? std::optional<uint8_t>(e.state.unknown_field_14) : std::nullopt;
+      }, "Unknown field 14: optional unsigned 8-bit value, None when absent")
+      .def_property_readonly("unknown_field_15", [](const mpi::DesignationEvent &e) -> std::optional<uint32_t> {
+        return e.state.has_unknown_field_15 ? std::optional<uint32_t>(e.state.unknown_field_15) : std::nullopt;
+      }, "Unknown field 15: optional unsigned 32-bit value, None when absent; see target_uid for known IDs")
       .def_property_readonly("target_uid", [](const mpi::DesignationEvent &e) { return e.state.target_uid(); },
                              "Unit uid of the designated target, or None");
 
@@ -324,7 +381,8 @@ void PyBattleMessages::include(py::module_ &m) {
       .def_property_readonly("last_shot", [](const GW &g) { return g.w.last_shot(); },
                              "Battle time in seconds of the last shot")
       .def_property_readonly("ready", [](const GW &g) { return g.w.ready(); },
-                             "Battle time in seconds when the weapon can fire again: last_shot plus the reload")
+                             "Raw ready field in seconds, or None if the ammo record was absent. Zero can occur "
+                             "after a shot; its meaning and validity as a timestamp are unknown")
       .def_readonly("rounds", &GW::rounds, "Rounds left per ammunition type; 65535 is unlimited");
 
   using GS = mpi::GroundSyncEvent;
@@ -363,7 +421,7 @@ void PyBattleMessages::include(py::module_ &m) {
                              "player")
       .def_property_readonly("aim_pitch", &GS::aim_pitch, "Probable: pitch of the aim, radians")
       .def_property_readonly("aim_distance", &GS::aim_distance,
-                             "Probable: distance to the point under the aim, m; 10 km at most")
+                             "Probable: distance to the point under the aim, m; None when aim data is absent")
       .def_readonly("weapon_count", &GS::weapon_count, "ParserState.ground_weapons(event) gives the weapons");
 
   py::enum_<mpi::SeekerSource>(mpi, "SeekerSource")
@@ -379,7 +437,9 @@ void PyBattleMessages::include(py::module_ &m) {
       .def_readonly("lost_for", &mpi::SeekerEvent::lost_for,
                     "Weapon only: seconds since the seeker lost its target; 0 while locked and before the first lock")
       .def_readonly("flight_time", &mpi::SeekerEvent::flight_time, "Weapon only: seconds since launch")
-      .def_readonly("head_b", &mpi::SeekerEvent::head_b)
+      .def_property_readonly("unknown_header_bit", [](const mpi::SeekerEvent &e) -> std::optional<bool> {
+        return e.source == mpi::SeekerWeapon ? std::optional<bool>(e.unknown_header_bit) : std::nullopt;
+      }, "Unknown 1-bit field preceding the block (formerly head_b); Weapon source only, otherwise None")
       .def_readonly("bits", &mpi::SeekerEvent::bits)
       .def_property_readonly("data", [](const mpi::SeekerEvent &e) {
         return py::bytes(reinterpret_cast<const char *>(e.data.data()), e.data.size());

@@ -33,19 +33,23 @@ bool SensorsControlStates::deserialize(BitStream &bs) {
       RET_FAIL(bs.Read(packed_val_1));
       RET_FAIL(bs.Read(packed_val_2));
       RET_FAIL(bs.Read(packed_val_3));
-      some_data_2 = netutils::UNPACKS<int16_t>(packed_val_1, 1.0f);
+      unknown_field_2 = netutils::UNPACKS<int16_t>(packed_val_1, 1.0f);
       some_data_4 = netutils::UNPACKS<int16_t>(packed_val_2, PI);
       some_data_5 = netutils::UNPACKS<int16_t>(packed_val_3, PI);
       if (bit_packed < 0) {
-        RET_FAIL(bs.Read(some_data_6[0]));
+        has_unknown_field_6_byte0 = true;
+        RET_FAIL(bs.Read(unknown_field_6_data[0]));
       }
       bool bool_thing = bs.ReadBit();
       if (bool_thing) {
+        has_unknown_fields_149_150 = true;
         uint8_t bVar7;
         RET_FAIL(bs.Read(bVar7));
-        this->some_data_6[1] = bVar7 & 1;
-        this->field149_0xa4 = (int) ((char) (bVar7 << 5) >> 6);
-        this->field150_0xa8 = (int) ((char) (bVar7 << 3) >> 6);
+        this->unknown_field_6_data[1] = bVar7 & 1;
+        const int field149 = (bVar7 >> 1) & 3;
+        const int field150 = (bVar7 >> 3) & 3;
+        this->unknown_field_149 = field149 < 2 ? field149 : field149 - 4;
+        this->unknown_field_150 = field150 < 2 ? field150 : field150 - 4;
       }
       break;
     }
@@ -57,10 +61,13 @@ bool SensorsControlStates::deserialize(BitStream &bs) {
       int16_t v;
       RET_FAIL(bs.Read(v));
       some_data_1 = netutils::UNPACKS<int16_t>(v, PI);
-      RET_FAIL(bs.ReadBits(reinterpret_cast<uint8_t *>(&some_data_2), 0x60));
-      RET_FAIL(bs.ReadBits(reinterpret_cast<uint8_t *>(&some_data_5),
-                           0x60)); // ok for some fucking reason some_data_6 is a float here
-      RET_FAIL(bs.Read(field147_0xa8));
+      RET_FAIL(bs.Read(unknown_field_2));
+      RET_FAIL(bs.Read(unknown_field_3));
+      RET_FAIL(bs.Read(some_data_4));
+      RET_FAIL(bs.Read(some_data_5));
+      RET_FAIL(bs.ReadBits(reinterpret_cast<uint8_t *>(unknown_field_6_data), 32));
+      RET_FAIL(bs.Read(some_data_7));
+      RET_FAIL(bs.Read(unknown_field_147));
       break;
     }
     case 3: {
@@ -69,8 +76,11 @@ bool SensorsControlStates::deserialize(BitStream &bs) {
     }
     case 4: {
       bool stuff_is_read = bs.ReadBit();
+      has_kind4_state = stuff_is_read;
       if (stuff_is_read) {
-        RET_FAIL(bs.ReadBits(reinterpret_cast<uint8_t *>(&some_data_1), 0x60));
+        RET_FAIL(bs.Read(some_data_1));
+        RET_FAIL(bs.Read(unknown_field_2));
+        RET_FAIL(bs.Read(unknown_field_3));
       }
       break;
     }
@@ -90,41 +100,39 @@ bool SensorsControlStates::deserialize(BitStream &bs) {
 
 
 bool TargetDesignationControlState::deserialize(BitStream &bs) {
-  RET_FAIL(bs.Read(v1));
-  RET_FAIL(bs.Read(v2));
-  v3 = bs.ReadBit();
-  if (v3) {
-    RET_FAIL(bs.Read(v4));
+  RET_FAIL(bs.Read(unknown_field_1));
+  RET_FAIL(bs.Read(unknown_field_2));
+  has_unknown_field_4 = bs.ReadBit();
+  if (has_unknown_field_4) {
+    RET_FAIL(bs.Read(unknown_field_4));
   }
-  write_compressed = bs.ReadBit();
-  if (write_compressed) {
-    RET_FAIL(bs.Read(v6));
-    RET_FAIL(netutils::read_vector(bs, v9, 4000.0f));
+  uses_compressed_vector = bs.ReadBit();
+  if (uses_compressed_vector) {
+    RET_FAIL(bs.Read(unknown_field_6));
+    RET_FAIL(netutils::read_vector(bs, unknown_field_9, 4000.0f));
   } else {
-    RET_FAIL(bs.Read(v7));
-    RET_FAIL(bs.Read(v9));
+    RET_FAIL(bs.Read(unknown_field_7));
+    RET_FAIL(bs.Read(unknown_field_9));
   }
-  RET_FAIL(bs.Read(v5));
-  v8 = bs.ReadBit();
-  v10 = bs.ReadBit();
-  auto read_some_float = bs.ReadBit();
-  if (read_some_float) {
+  RET_FAIL(bs.Read(unknown_field_5));
+  unknown_field_8 = bs.ReadBit();
+  unknown_field_10 = bs.ReadBit();
+  has_unknown_field_11 = bs.ReadBit();
+  if (has_unknown_field_11) {
     uint8_t temp;
     RET_FAIL(bs.Read(temp));
-    v11 = netutils::UNPACK<uint8_t>(temp, 1);
+    unknown_field_11 = netutils::UNPACK<uint8_t>(temp, 1);
   }
-  bool has_v14;
-  RET_FAIL(bs.Read(v12));
-  RET_FAIL(bs.Read(has_v14));
-  v13 = bs.ReadBit();
-  if (has_v14) {
-    RET_FAIL(bs.Read(v14));
+  RET_FAIL(bs.Read(unknown_field_12));
+  RET_FAIL(bs.Read(has_unknown_field_14));
+  unknown_field_13 = bs.ReadBit();
+  if (has_unknown_field_14) {
+    RET_FAIL(bs.Read(unknown_field_14));
   } else
-    v14 = 0;
-  bool has_v15;
-  RET_FAIL(bs.Read(has_v15));
-  if (has_v15) {
-    RET_FAIL(bs.Read(v15));
+    unknown_field_14 = 0;
+  RET_FAIL(bs.Read(has_unknown_field_15));
+  if (has_unknown_field_15) {
+    RET_FAIL(bs.Read(unknown_field_15));
   }
   return true;
 }
@@ -154,9 +162,6 @@ std::vector<std::string> unit::getUnitTagsName(std::string_view &name) {
     return {};
   return getUnitTagsBlk(blk);
 }
-G_STATIC_ASSERT(sizeof(TargetDesignationControlState) == 0x50);
-
-
 // Keeps the block when all of it is there. A block cut short is skipped, so the reads
 // after it stay at the correct offset.
 static void ReadSeekerBits(ParserState &state, const BitStream &bs, uint32_t bits, mpi::SeekerEvent &ev) {
@@ -197,25 +202,37 @@ static T SeekerValue(const mpi::SeekerEvent &ev, uint32_t at) {
 
 mpi::SeekerState mpi::DecodeSeeker(const SeekerEvent &ev) {
   SeekerState st{};
-  if (ev.data.size() < BITS_TO_BYTES(ev.bits))
+  if (ev.data.size() < (uint64_t(ev.bits) + 7) / 8)
     return st;
   if (ev.source == SeekerAircraft) {
     if (ev.bits == 518) {
-      st.ir_state = (SeekerByte(ev, 43) >> 5) & 7;
+      // The 518-bit layout contains one seeker state. Its slot's presence bit
+      // follows one bit for each preceding absent slot, so the state's fields
+      // shift by one bit per slot relative to the second-slot offsets.
+      uint32_t slot = 0;
+      while (slot < 3 && !(ev.data[slot / 8] & (0x80u >> (slot % 8))))
+        ++slot;
+      if (slot == 3)
+        return st;
+      const int offset = int(slot) - 1;
+      st.ir_state = (SeekerByte(ev, 43 + offset) >> 5) & 7;
       // -FLT_MAX until the seeker first locks
-      float t = SeekerValue<float>(ev, 50);
+      float t = SeekerValue<float>(ev, 50 + offset);
       if (t > -1e30f)
         st.lock_time = t;
-      st.seeker_dir = Point3(SeekerValue<float>(ev, 149), SeekerValue<float>(ev, 181), SeekerValue<float>(ev, 213));
-      st.gimbal_az = SeekerValue<float>(ev, 85);
-      st.gimbal_el = SeekerValue<float>(ev, 117);
-      st.fov_half = SeekerValue<float>(ev, 341);
+      st.seeker_dir = Point3(SeekerValue<float>(ev, 149 + offset), SeekerValue<float>(ev, 181 + offset),
+                             SeekerValue<float>(ev, 213 + offset));
+      st.gimbal_az = SeekerValue<float>(ev, 85 + offset);
+      st.gimbal_el = SeekerValue<float>(ev, 117 + offset);
+      st.fov_half = SeekerValue<float>(ev, 341 + offset);
     } else if (ev.bits == 895) {
       st.target_pos = Point3(SeekerValue<float>(ev, 83), SeekerValue<float>(ev, 115), SeekerValue<float>(ev, 147));
     }
     return st;
   }
   if (ev.source != SeekerWeapon)
+    return st;
+  if (ev.bits != 607 && ev.bits != 639 && ev.bits != 283)
     return st;
   uint32_t los_at, extra = 0;
   // Bits 8-10: 111 track, 001 search; 100 in the 639-bit block, sent once as the seeker
@@ -811,6 +828,7 @@ bool GMSync(ParserState &state, BitStream &bs) {
         RET_FAIL(bs.Read(ref.turret_count));
         RET_FAIL(bs.Read(isCompressed));
         mpi::GroundSyncEvent ev{state.curr_time_ms, uid_lower};
+        ev.owner_id = state.ground_owner_id;
         ev.unit = ref.ref_1;
         ev.weapon_count = ref.turret_count;
         // With the list kept, the weapons go to the pool, and are dropped again when the event is not
@@ -1025,7 +1043,7 @@ bool ParseWeapon(ParserState &state, const BitStream &bs, get_weapon_cb cb) {
     }
     int16_t vel[3];
     RET_FAIL(bs.Read(vel));
-    sync.velocity = Point3(vel[0], vel[1], vel[2]) / 16.f;
+    sync.velocity = Point3(vel[0], vel[1], vel[2]) * (2000.f / 32767.f);
     // Three more int16 near 0, x always 0: not the angular rate and not the lateral load.
     int16_t b8[3];
     RET_FAIL(bs.Read(b8));
@@ -1071,7 +1089,7 @@ bool ParseWeapon(ParserState &state, const BitStream &bs, get_weapon_cb cb) {
       ev.lost_for = vv;
       if (flags & 1)
         ev.flight_time = sf1;
-      ev.head_b = vv2;
+      ev.unknown_header_bit = vv2;
       ReadSeekerBits(state, bs, sz, ev);
     } else if (resyncSaclosGuidanceParams) {
       bool do_stuff;

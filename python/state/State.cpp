@@ -159,9 +159,21 @@ void PyReplayState::include(py::module_ &m) {
     .def(
       "ground_weapons",
       [](const ParserState &s, const mpi::GroundSyncEvent &e) {
+        if (e.owner_id != s.ground_owner_id)
+          throw py::value_error("ground sync event belongs to another parser state");
+        if (e.weapons_begin > s.GroundWeapons.size() ||
+            e.weapon_count > s.GroundWeapons.size() - e.weapons_begin)
+          throw py::value_error("ground sync weapon range is out of bounds");
         std::vector<PyGroundWeapon> out(e.weapon_count);
         for (uint8_t i = 0; i < e.weapon_count; i++) {
-          const auto &w = s.GroundWeapons[e.weapons_begin + i];
+          const auto &w = s.GroundWeapons[size_t(e.weapons_begin) + i];
+          if (w.rounds_begin > s.GroundRounds.size() ||
+              w.round_count > s.GroundRounds.size() - w.rounds_begin)
+            throw py::value_error("ground sync ammunition range is out of bounds");
+          if (!w.round_count) {
+            out[i] = {w, {}};
+            continue;
+          }
           auto rounds = s.GroundRounds.begin() + w.rounds_begin;
           out[i] = {w, {rounds, rounds + w.round_count}};
         }

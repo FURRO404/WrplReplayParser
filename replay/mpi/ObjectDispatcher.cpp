@@ -377,14 +377,16 @@ namespace mpi {
 
   bool CockpitMessage::readPayload(ParserState *state) {
     cockpit.time_ms = state->curr_time_ms;
-    uint16_t head = 0, count = 0;
-    if (!payload.Read(head) || !payload.Read(count))
+    BitStream nested;
+    uint16_t count = 0;
+    if (!payload.Read(nested) || !nested.Read(count) ||
+        count > nested.GetNumberOfUnreadBits() / (8 * (sizeof(uint16_t) + sizeof(float))))
       return false;
     cockpit.params.reserve(count);
     for (uint16_t i = 0; i < count; i++) {
       uint16_t id = 0;
       float value = 0;
-      if (!payload.Read(id) || !payload.Read(value))
+      if (!nested.Read(id) || !nested.Read(value))
         return false;
       cockpit.params.emplace_back(id, value);
     }
@@ -393,12 +395,12 @@ namespace mpi {
 
   bool RpmMessage::readPayload(ParserState *state) {
     rpm.time_ms = state->curr_time_ms;
-    uint8_t head = 0; // engine count in the high nibble
-    if (!payload.Read(head))
+    BitStream nested;
+    if (!payload.Read(nested) || nested.GetNumberOfUnreadBits() % 16 != 0)
       return false;
-    rpm.rpm.resize(head >> 4);
+    rpm.rpm.resize(nested.GetNumberOfUnreadBits() / 16);
     for (auto &r: rpm.rpm)
-      if (!payload.Read(r))
+      if (!nested.Read(r))
         return false;
     return true;
   }
