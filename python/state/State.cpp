@@ -206,6 +206,8 @@ void PyReplayState::include(py::module_ &m) {
               while (cont && rdr.getNextPacket(pkt)) {
                 BitSize_t start_offs = pkt.stream.GetReadOffset();
                 cont = state.ParsePacket(pkt);
+                if (!cont && pkt.type != ReplayPacketType::EndMarker)
+                  throw std::runtime_error(fmt::format("Failed to parse packet at {} ms", pkt.timestamp_ms));
                 pkt.stream.SetReadOffset(start_offs);
                 // the GIL only around the callback, so parses on other threads keep running meanwhile
                 py::gil_scoped_acquire gil;
@@ -216,8 +218,13 @@ void PyReplayState::include(py::module_ &m) {
             }
           } else {
             try {
-              while (rdr.getNextPacket(pkt) && state.ParsePacket(pkt))
-                ;
+              while (rdr.getNextPacket(pkt)) {
+                if (!state.ParsePacket(pkt)) {
+                  if (pkt.type != ReplayPacketType::EndMarker)
+                    throw std::runtime_error(fmt::format("Failed to parse packet at {} ms", pkt.timestamp_ms));
+                  break;
+                }
+              }
             } catch (...) {
               eptr = std::current_exception();
             }
@@ -231,7 +238,9 @@ void PyReplayState::include(py::module_ &m) {
         }
         // if its another thread, then my segfault handler will catch it and print the stacktrace
       },
-      py::arg("reader"), py::arg("callback") = nullptr)
+      py::arg("reader"), py::arg("callback") = nullptr,
+      "Load packets until the end marker or reader exhaustion. Raises RuntimeError on a packet decode failure; "
+      "aircraft events and positions from the failed packet are discarded.")
     .def("collect_all_units", [](ParserState &state) { return collect_all_units(state); })
     .def("collect_all_rockets", [](ParserState &state) { return collect_all_rockets(state); })
     .def("collect_all_bombs", [](ParserState &state) { return collect_all_bombs(state); })

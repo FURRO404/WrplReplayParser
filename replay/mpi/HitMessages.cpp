@@ -376,17 +376,22 @@ namespace mpi {
 
   bool UnitDetectedMessage::readPayload(ParserState *state) {
     uint8_t field_no = 0;
+    uint8_t seen = 0;
     spot.time_ms = state->curr_time_ms;
     bool valid = parse([&](const BitStream *bs, uint32_t field_id) {
       const uint8_t idx = field_no++;
+      if ((field_id == 1 || field_id == 2) && fieldSize(idx) != 16)
+        return false;
       switch (field_id) {
-        case 1: return bs->Read(spot.spotter_id);
-        case 2: return bs->Read(spot.spotted_id);
+        case 1: seen |= 1; return bs->Read(spot.spotter_id);
+        case 2: seen |= 2; return bs->Read(spot.spotted_id);
         default: break;
       }
       this->skipReadingField(idx);
       return true;
-    });
+    }, true);
+    if (!valid || seen != 3)
+      return false;
     // A uid is unique only per unit kind, so keep a unit only if its kind matches the id.
     auto resolve = [&](uint16_t id) -> unit::Unit * {
       unit::Unit *u = state->getUnitObj(id);
@@ -396,7 +401,7 @@ namespace mpi {
     };
     spot.spotter = resolve(spot.spotter_id);
     spot.spotted = resolve(spot.spotted_id);
-    return valid;
+    return true;
   }
 
   // 0xF0BD UnitBulletRearm

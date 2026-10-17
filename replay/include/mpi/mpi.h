@@ -142,7 +142,8 @@ namespace mpi // message passing interface
 
     void checkFieldSize(uint8_t index, BitSize_t size) { idFieldSerializer.checkFieldSize(index, size); }
 
-    inline bool parse(const eastl::function<bool(const BitStream *, uint32_t)> &cb);
+    inline bool parse(const eastl::function<bool(const BitStream *, uint32_t)> &cb, bool checked = false);
+    uint32_t fieldSize(uint8_t index) const { return idFieldSerializer.getFieldSize(index); }
 
   private:
     IdFieldSerializer32 idFieldSerializer;
@@ -208,9 +209,15 @@ namespace mpi // message passing interface
   IObject *dispatch_object(mpi::ObjectID oid, ObjectExtUID ext_uid, ParserState *state);
 
 
-  inline bool Message::parse(const eastl::function<bool(const BitStream *, uint32_t)> &cb) {
+  inline bool Message::parse(const eastl::function<bool(const BitStream *, uint32_t)> &cb, bool checked) {
     ZoneScoped;
-    uint32_t fields = this->readFieldsSizeAndFlag();
+    uint32_t fields = 0;
+    if (checked) {
+      if (!idFieldSerializer.readFieldsSizeAndFlagChecked(payload, fields))
+        return false;
+    } else {
+      fields = this->readFieldsSizeAndFlag();
+    }
     if (fields == 0) /* no data was serialized in a message that expects data*/
       return false;
     /* sizes are stored based on # of fields, they are not stored based on a field index, so we need a separate var
@@ -219,14 +226,18 @@ namespace mpi // message passing interface
       uint8_t curr_field = 0;
       while (((fields >> curr_field) & 1) == 0)
         curr_field++; /* this just iterates over all the fields to find the next one*/
-      fields &= ~(1 << (curr_field & 0x1f)); /*this is done to remove previous (and maybe current????) field index*/
+      fields &= ~(1u << (curr_field & 0x1f)); /* remove the current field */
       /* dont ask me how it works, its probably compiler black magic that created this, or Gaijin did*/
       BitSize_t start_index = this->payload.GetReadOffset();
       bool ret = cb(&this->payload, curr_field);
       if (!ret) {
         LOGE("{} failed to parse field {} (index {}) of mid {:#x}", util::type_name_of_obj(this), curr_field,
              curr_field_index, this->id);
+        if (checked)
+          return false;
       }
+      if (checked && this->payload.GetReadOffset() - start_index != fieldSize(curr_field_index))
+        return false;
       this->checkFieldSize(curr_field_index, this->payload.GetReadOffset() - start_index);
     }
     return true;

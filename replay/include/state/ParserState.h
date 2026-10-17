@@ -18,6 +18,7 @@
 #include "StateRewinder.h"
 #include "mpi/Ballistics.h"
 #include <atomic>
+#include <memory>
 namespace unit {
   class Unit;
 }
@@ -102,6 +103,10 @@ protected:
   // used by ballisitics loader as cache
   std::unordered_map<std::string, unit::BallisticParams> ballistics_cache;
   std::unordered_map<std::string, std::vector<unit::BulletSet>> bullet_set_cache;
+  // Units must outlive ECS entities: stores and recorded events reference them and
+  // their weapons even after the owner entity disappears. Declared before the
+  // entity manager so they also remain alive while it destroys its stores.
+  std::vector<std::unique_ptr<unit::Unit>> owned_units;
   friend unit::BallisticParams;
   friend unit::BulletSet;
 
@@ -116,6 +121,7 @@ protected:
   friend IObjectRewindState;
 
 public:
+  void ownUnit(unit::Unit *unit);
   template<class T, class... Args>
   T *_new(Args &&...args) {
     return allocator._new<T>(std::forward<Args>(args)...);
@@ -207,6 +213,8 @@ public:
 
   ~ParserState();
 
+  /// False on an end marker or a packet decode failure; inspect pkt.type to distinguish them.
+  /// A failed aircraft packet does not publish its partial positions or event lists.
   bool ParsePacket(ReplayPacket &pkt);
 
   void rewindToMs(uint32_t time_ms);

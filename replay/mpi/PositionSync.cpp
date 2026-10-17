@@ -9,16 +9,16 @@
 bool separateServerSideDetection_g = true;
 bool resyncSaclosGuidanceParams = true; // actually known to be true, hopefully
 
-#define RET_FAIL(op) G_ASSERT_RETURN((op), false);
+#define RET_FAIL(op) do { if (!(op)) return false; } while (0)
 bool SensorsControlStates::deserialize(BitStream &bs) {
-  first_bool = bs.ReadBit();
+  RET_FAIL(bs.Read(first_bool));
   uint8_t sensor_type;
-  bs.Read(sensor_type);
+  RET_FAIL(bs.Read(sensor_type));
   sensor_type_maybe = sensor_type;
   sensor_type >>= 4;
   switch (sensor_type) {
     case 1: {
-      has_state = bs.ReadBit();
+      RET_FAIL(bs.Read(has_state));
       if (!has_state)
         return true;
       int16_t bit_packed;
@@ -40,7 +40,8 @@ bool SensorsControlStates::deserialize(BitStream &bs) {
         has_unknown_field_6_byte0 = true;
         RET_FAIL(bs.Read(unknown_field_6_data[0]));
       }
-      bool bool_thing = bs.ReadBit();
+      bool bool_thing;
+      RET_FAIL(bs.Read(bool_thing));
       if (bool_thing) {
         has_unknown_fields_149_150 = true;
         uint8_t bVar7;
@@ -57,7 +58,9 @@ bool SensorsControlStates::deserialize(BitStream &bs) {
       if (first_bool == 0) {
         return true;
       }
-      field136_0x88 = bs.ReadBit();
+      bool flag;
+      RET_FAIL(bs.Read(flag));
+      field136_0x88 = flag;
       int16_t v;
       RET_FAIL(bs.Read(v));
       some_data_1 = netutils::UNPACKS<int16_t>(v, PI);
@@ -71,11 +74,11 @@ bool SensorsControlStates::deserialize(BitStream &bs) {
       break;
     }
     case 3: {
-      G_ASSERT(false); // uglugluglug
-      break;
+      return false; // unsupported sensor layout
     }
     case 4: {
-      bool stuff_is_read = bs.ReadBit();
+      bool stuff_is_read;
+      RET_FAIL(bs.Read(stuff_is_read));
       has_kind4_state = stuff_is_read;
       if (stuff_is_read) {
         RET_FAIL(bs.Read(some_data_1));
@@ -84,9 +87,10 @@ bool SensorsControlStates::deserialize(BitStream &bs) {
       }
       break;
     }
-    default: G_ASSERT(false);
+    default: return false;
   }
-  bool stores_vec_thang = bs.ReadBit();
+  bool stores_vec_thang;
+  RET_FAIL(bs.Read(stores_vec_thang));
   if (stores_vec_thang) {
     RET_FAIL(bs.ReadBits(&field132_0x84, 6));
     field4_0x4.resize(field132_0x84);
@@ -102,11 +106,11 @@ bool SensorsControlStates::deserialize(BitStream &bs) {
 bool TargetDesignationControlState::deserialize(BitStream &bs) {
   RET_FAIL(bs.Read(unknown_field_1));
   RET_FAIL(bs.Read(unknown_field_2));
-  has_unknown_field_4 = bs.ReadBit();
+  RET_FAIL(bs.Read(has_unknown_field_4));
   if (has_unknown_field_4) {
     RET_FAIL(bs.Read(unknown_field_4));
   }
-  uses_compressed_vector = bs.ReadBit();
+  RET_FAIL(bs.Read(uses_compressed_vector));
   if (uses_compressed_vector) {
     RET_FAIL(bs.Read(unknown_field_6));
     RET_FAIL(netutils::read_vector(bs, unknown_field_9, 4000.0f));
@@ -115,9 +119,11 @@ bool TargetDesignationControlState::deserialize(BitStream &bs) {
     RET_FAIL(bs.Read(unknown_field_9));
   }
   RET_FAIL(bs.Read(unknown_field_5));
-  unknown_field_8 = bs.ReadBit();
-  unknown_field_10 = bs.ReadBit();
-  has_unknown_field_11 = bs.ReadBit();
+  RET_FAIL(bs.Read(unknown_field_8));
+  bool field_10;
+  RET_FAIL(bs.Read(field_10));
+  unknown_field_10 = field_10;
+  RET_FAIL(bs.Read(has_unknown_field_11));
   if (has_unknown_field_11) {
     uint8_t temp;
     RET_FAIL(bs.Read(temp));
@@ -125,7 +131,7 @@ bool TargetDesignationControlState::deserialize(BitStream &bs) {
   }
   RET_FAIL(bs.Read(unknown_field_12));
   RET_FAIL(bs.Read(has_unknown_field_14));
-  unknown_field_13 = bs.ReadBit();
+  RET_FAIL(bs.Read(unknown_field_13));
   if (has_unknown_field_14) {
     RET_FAIL(bs.Read(unknown_field_14));
   } else
@@ -258,35 +264,47 @@ mpi::SeekerState mpi::DecodeSeeker(const SeekerEvent &ev) {
   return st;
 }
 
-void DeserializeSeekerData(ParserState &state, BitStream &bs, mpi::SeekerSource source, unit::Unit *unit) {
-  uint32_t val = 0;
-  bs.Read(val);
-  mpi::SeekerEvent ev{state.curr_time_ms, source};
-  ev.unit = unit;
-  ReadSeekerBits(state, bs, val, ev);
-}
-
 bool FMSync(ParserState &state, BitStream &bs) {
   ZoneScoped;
+  // Do not publish part of a packet if a later aircraft cannot be decoded.
+  struct EventRollback {
+    ParserState &state;
+    size_t ammo, controls, sensors, designations, seekers;
+    bool committed = false;
+    ~EventRollback() {
+      if (!committed) {
+        state.AmmoEvents.resize(ammo);
+        state.ControlEvents.resize(controls);
+        state.SensorEvents.resize(sensors);
+        state.DesignationEvents.resize(designations);
+        state.SeekerEvents.resize(seekers);
+      }
+    }
+  } rollback{state, state.AmmoEvents.size(), state.ControlEvents.size(), state.SensorEvents.size(),
+             state.DesignationEvents.size(), state.SeekerEvents.size()};
+  std::vector<std::pair<unit::Aircraft *, SpaceTimeEuler>> positions;
   uint16_t uid = 0;
   do {
-    bool uid_serialized = bs.ReadBit();
+    bool uid_serialized;
+    RET_FAIL(bs.Read(uid_serialized));
     if (uid_serialized) {
-      bs.ReadCompressed(uid);
+      RET_FAIL(bs.ReadCompressed(uid));
       uid &= 0x7FF;
     } else {
       uid += 1;
     }
     if (uid == 0x7FF)
       break;
-    bool has_data = bs.ReadBit();
+    bool has_data;
+    RET_FAIL(bs.Read(has_data));
     if (!has_data) {
       // LOG("yes to data");
       if (separateServerSideDetection_g == false) {
-        G_ASSERT(false); // be ready for if this ever happens
+        return false; // unsupported detection layout
       } else {
-        bool lVar30lessThan0 = bs.ReadBit();
-        bool cVar4NE0 = bs.ReadBit();
+        bool lVar30lessThan0, cVar4NE0;
+        RET_FAIL(bs.Read(lVar30lessThan0));
+        RET_FAIL(bs.Read(cVar4NE0));
         // if both true, then we do nothing
         if (!(lVar30lessThan0 && cVar4NE0)) {
           auto ref = state.getUnitObj(uid);
@@ -296,25 +314,28 @@ bool FMSync(ParserState &state, BitStream &bs) {
           if (!unit)
             return false;
           mpi::ControlEvent control{state.curr_time_ms, unit};
-          control.on_ground = bs.ReadBit();
+          RET_FAIL(bs.Read(control.on_ground));
           uint32_t some_uint;
-          bs.Read(some_uint);
-          bool _0x7330_val = bs.ReadBit();
-          bool triggers = bs.ReadBit();
+          RET_FAIL(bs.Read(some_uint));
+          bool _0x7330_val, triggers;
+          RET_FAIL(bs.Read(_0x7330_val));
+          RET_FAIL(bs.Read(triggers));
           if (triggers) {
-            control.fire_mg = bs.ReadBit();
-            control.fire_cannon = bs.ReadBit();
-            control.fire_additional = bs.ReadBit();
+            RET_FAIL(bs.Read(control.fire_mg));
+            RET_FAIL(bs.Read(control.fire_cannon));
+            RET_FAIL(bs.Read(control.fire_additional));
             // The count is the number of gun-type entries in the weapon list: guns, gun pods, turret guns, the
             // dummy optic and HMD turrets and targeting pods (338 of 338 aircraft). The bit for each was 1 in
             // only 19 syncs; its meaning is not known.
             uint8_t count = 0;
-            bs.ReadBits(&count, 4);
+            RET_FAIL(bs.ReadBits(&count, 4));
             // std::vector<uint32_t>
             dag::Vector<bool, StateAllocator::DagAllocType> temp_bits(state.getMem());
             temp_bits.reserve(count);
             for (int i = 0; i < count; i++) {
-              temp_bits.push_back(bs.ReadBit());
+              bool bit;
+              RET_FAIL(bs.Read(bit));
+              temp_bits.push_back(bit);
             }
           }
           int zig_val = 0;
@@ -352,32 +373,35 @@ bool FMSync(ParserState &state, BitStream &bs) {
           uint32_t some_packed_val;
           uint32_t vals_4;
           SpaceTimeEuler st{{}, {}};
-          bs.Read(st.location);
-          bs.Read(some_packed_val);
+          RET_FAIL(bs.Read(st.location));
+          RET_FAIL(bs.Read(some_packed_val));
           Point3 someEuler;
           netutils::unpack_euler(some_packed_val, st.euler);
-          *unit->positions.reserveOne() = st;
-          unit->positions.checkAndPush(&state);
+          positions.emplace_back(unit, st);
 
-          bs.Read(vals_4);
+          RET_FAIL(bs.Read(vals_4));
           Point3 vel;
           netutils::unpack_velocity(vals_4, vel, 500);
+          RET_FAIL(bs.GetNumberOfUnreadBits() >= ((8 - (bs.GetReadOffset() & 7)) & 7));
           bs.AlignReadToByteBoundary();
-          bs.ReadBits(control.controls, 0x38);
+          RET_FAIL(bs.ReadBits(control.controls, 0x38));
           uint8_t number_of_engines;
-          bs.Read(number_of_engines);
+          RET_FAIL(bs.Read(number_of_engines));
           if (number_of_engines > 0xf)
             return false; // "FMsync: numEngines >= MAX_AIRCRAFT_MOTORS"
           control.engines.resize(number_of_engines);
           for (auto &engine: control.engines) {
-            bool has_afterburner = bs.ReadBit();
+            bool has_afterburner;
+            RET_FAIL(bs.Read(has_afterburner));
             RET_FAIL(bs.Read(engine.state));
             if (has_afterburner) {
               int16_t packed;
               RET_FAIL(bs.Read(packed));
               engine.afterburner = netutils::UNPACKS<int16_t>(packed, 1.1f);
             }
-            if (bs.ReadBit()) {
+            bool has_health;
+            RET_FAIL(bs.Read(has_health));
+            if (has_health) {
               int8_t packed;
               RET_FAIL(bs.Read(packed));
               engine.health = netutils::UNPACKS<int8_t>(packed, 1.0);
@@ -387,7 +411,7 @@ bool FMSync(ParserState &state, BitStream &bs) {
           if (state.keep.controls)
             state.ControlEvents.push_back(std::move(control));
           uint8_t sensorsCount;
-          bs.Read(sensorsCount);
+          RET_FAIL(bs.Read(sensorsCount));
           RET_FAIL(sensorsCount <= SENSORS_COUNT);
           std::pmr::vector<SensorsControlStates> sensors{sensorsCount, state.get_allocator()};
           for (auto &s: sensors) {
@@ -395,14 +419,14 @@ bool FMSync(ParserState &state, BitStream &bs) {
           }
           uint8_t v = 0;
           if (sensorsCount != 0) {
-            bs.Read(v);
+            RET_FAIL(bs.Read(v));
           }
           for (uint8_t i = 0; i < sensorsCount; i++)
             if (state.keep.sensors)
               state.SensorEvents.push_back({state.curr_time_ms, unit, i, v, sensors[i]});
 
           uint8_t counterMeasuresCount;
-          bs.Read(counterMeasuresCount);
+          RET_FAIL(bs.Read(counterMeasuresCount));
           RET_FAIL(counterMeasuresCount <= COUNTER_MEASURES_COUNT);
           std::pmr::vector<CounterMeasuresControlState> counterMeasures{counterMeasuresCount, state.get_allocator()};
           for (auto &c: counterMeasures) {
@@ -410,9 +434,9 @@ bool FMSync(ParserState &state, BitStream &bs) {
           }
           uint8_t counter_measures_v;
           if (counterMeasuresCount > 0)
-            bs.Read(counter_measures_v);
+            RET_FAIL(bs.Read(counter_measures_v));
           uint8_t targetsNum = 0;
-          bs.ReadBits(&targetsNum, 4);
+          RET_FAIL(bs.ReadBits(&targetsNum, 4));
           RET_FAIL(targetsNum <= TARGETS_NUM);
           std::pmr::vector<TargetDesignationControlState> targets{targetsNum, state.get_allocator()};
           for (uint8_t i = 0; i < targetsNum; i++) {
@@ -421,17 +445,22 @@ bool FMSync(ParserState &state, BitStream &bs) {
               state.DesignationEvents.push_back({state.curr_time_ms, unit, i, targets[i]});
           }
           bool bit_thing;
-          bs.Read(bit_thing);
+          RET_FAIL(bs.Read(bit_thing));
           if (bit_thing) {
             uint16_t vt_1;
             uint16_t vt_2;
-            bs.Read(vt_1);
-            bs.Read(vt_2);
+            RET_FAIL(bs.Read(vt_1));
+            RET_FAIL(bs.Read(vt_2));
           }
           bool bit_thing_2;
-          bs.Read(bit_thing_2);
+          RET_FAIL(bs.Read(bit_thing_2));
           if (bit_thing_2) {
-            DeserializeSeekerData(state, bs, mpi::SeekerAircraft, unit);
+            uint32_t bits;
+            RET_FAIL(bs.Read(bits));
+            RET_FAIL(bits <= bs.GetNumberOfUnreadBits());
+            mpi::SeekerEvent event{state.curr_time_ms, mpi::SeekerAircraft};
+            event.unit = unit;
+            ReadSeekerBits(state, bs, bits, event);
           }
         }
       }
@@ -443,7 +472,12 @@ bool FMSync(ParserState &state, BitStream &bs) {
   // In a client replay: the position of the author's own aircraft, equal to its sync
   // position. All 0 in a server replay.
   float maybe_floats[3];
-  bs.Read(maybe_floats);
+  RET_FAIL(bs.Read(maybe_floats));
+  for (const auto &[unit, position] : positions) {
+    *unit->positions.reserveOne() = position;
+    unit->positions.checkAndPush(&state);
+  }
+  rollback.committed = true;
   // some extra data here
   return true;
 }
@@ -498,7 +532,9 @@ bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, mpi::Grou
       float floats[4];
       RET_FAIL(bs.Read(floats)); // 4 float reads, then 1 later (usePositionHistoryForSlaves is true
       if (true) {
-        if (bs.ReadBit()) {
+        bool extra;
+        RET_FAIL(bs.Read(extra));
+        if (extra) {
           float f1;
           float f2[6];
           float f3[4];
@@ -521,12 +557,12 @@ bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, mpi::Grou
       // LOGI("{} {} {}", direction.x, direction.y, direction.z);
     }
     bool bool3, awake = false;
-    bs.Read(awake);
+    RET_FAIL(bs.Read(awake));
     ev.set(ev.Awake, awake);
-    bs.Read(bool3);
+    RET_FAIL(bs.Read(bool3));
     Point3 unit_position{};
     if (bool3) {
-      bs.Read(unit_position);
+      RET_FAIL(bs.Read(unit_position));
     } else {
       uint32_t tv1, tv2;
       RET_FAIL(bs.Read(tv1));
@@ -589,7 +625,9 @@ bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, mpi::Grou
       uint8_t some_vals_2[2]; // never sent
       uint8_t w[4]; // w0..w2 unknown (127 without flooding), then the shaft count
       RET_FAIL(bs.Read(ship));
-      if (bs.ReadBit()) {
+      bool has_extra;
+      RET_FAIL(bs.Read(has_extra));
+      if (has_extra) {
         RET_FAIL(bs.Read(some_vals_2));
       }
       bool flooding;
@@ -634,7 +672,9 @@ bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, mpi::Grou
       RET_FAIL(bs.ReadBits(&(some_vals[8]), 4));
     }
 
-    if (bs.ReadBit()) {
+    bool has_sub_vehicles;
+    RET_FAIL(bs.Read(has_sub_vehicles));
+    if (has_sub_vehicles) {
       uint8_t sub_vehicle_count{};
       RET_FAIL(bs.Read(sub_vehicle_count));
       RET_FAIL(sub_vehicle_count <= 4);
@@ -673,7 +713,9 @@ bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, mpi::Grou
     // LOGI("turret {}: bool1: {}; val1: {}; bool2: {}; val2: {}; bool3: {}; bool4: {}", i, bool1, val1, bool2, val2,
     //      bool3, bool4);
     if (b2) {
-      if (bs.ReadBit()) {
+      bool has_turret;
+      RET_FAIL(bs.Read(has_turret));
+      if (has_turret) {
         uint16_t tv1, tv2;
         uint8_t tv18, tv28;
         float turret_x = 0.f, turret_y = 0.f, turret_z = 0.f;
@@ -797,11 +839,11 @@ bool GMSync(ParserState &state, BitStream &bs) {
   uint16_t uid_upper;
   float time_at;
   uint16_t packet_reliability_order;
-  bs.Read(uid_lower);
-  bs.Read(uid_upper);
+  RET_FAIL(bs.Read(uid_lower));
+  RET_FAIL(bs.Read(uid_upper));
   uint16_t uid_lower_base = uid_lower;
-  bs.Read(time_at);
-  bs.Read(packet_reliability_order);
+  RET_FAIL(bs.Read(time_at));
+  RET_FAIL(bs.Read(packet_reliability_order));
   for (; uid_lower < uid_upper; uid_lower++) {
     TankRef ref{};
     bool bool1;
@@ -815,7 +857,9 @@ bool GMSync(ParserState &state, BitStream &bs) {
       uint8_t some_val_idk;
       bool bool4;
       RET_FAIL(bs.Read(bool2)); // some weird flag setting based on bool value at unit + 0x90
-      if (bs.ReadBit()) {
+      bool has_some_val;
+      RET_FAIL(bs.Read(has_some_val));
+      if (has_some_val) {
         RET_FAIL(bs.ReadBits(&some_val_idk, 4));
       }
       RET_FAIL(bs.Read(ref.val2));
@@ -866,9 +910,11 @@ bool GMSync(ParserState &state, BitStream &bs) {
             }
           }
         } else {
+          RET_FAIL(bs.GetNumberOfUnreadBits() >= ((8 - (bs.GetReadOffset() & 7)) & 7));
           bs.AlignReadToByteBoundary();
-          ParseVehicleInfo(state, bs, &ref, ev, weapons);
-          G_ASSERT(false);
+          have_state = ParseVehicleInfo(state, bs, &ref, ev, weapons);
+          if (!have_state)
+            return false; // The remaining fields cannot be located after a short state.
         }
         bool has_aim;
         RET_FAIL(bs.Read(has_aim));
@@ -914,13 +960,19 @@ bool GMSync(ParserState &state, BitStream &bs) {
         }
         bool has_sensor_info;
         bool has_sensor_info_2;
-        bs.Read(has_sensor_info);
+        RET_FAIL(bs.Read(has_sensor_info));
         if (has_sensor_info) {
-          bs.Read(has_sensor_info_2);
+          RET_FAIL(bs.Read(has_sensor_info_2));
           if (has_sensor_info_2) {
-            DeserializeSeekerData(state, bs, mpi::SeekerGround, ref.ref_1);
+            uint32_t bits;
+            RET_FAIL(bs.Read(bits));
+            RET_FAIL(bits <= bs.GetNumberOfUnreadBits());
+            mpi::SeekerEvent event{state.curr_time_ms, mpi::SeekerGround};
+            event.unit = ref.ref_1;
+            ReadSeekerBits(state, bs, bits, event);
           }
         }
+        RET_FAIL(bs.GetNumberOfUnreadBits() >= ((8 - (bs.GetReadOffset() & 7)) & 7));
         bs.AlignReadToByteBoundary();
         if (keep && have_state && !SameAsLast(state, ev)) {
           if (ev.uid >= state.GroundSyncLast.size())
