@@ -50,7 +50,7 @@ namespace mpi {
 
 
     Message *dispatchMpiMessage(MessageID mid) override;
-    void applyMpiMessage(const Message *m) override;
+    bool applyMpiMessage(const Message *m) override;
     ~GeneralObject() override = default;
   };
 
@@ -485,7 +485,7 @@ namespace mpi {
   struct LocalClientObject : public IObject {
     LocalClientObject(ParserState *state) : IObject(state, 0x5803) {}
     Message *dispatchMpiMessage(MessageID mid) override;
-    void applyMpiMessage(const Message *m) override;
+    bool applyMpiMessage(const Message *m) override;
     ~LocalClientObject() override = default;
   };
 

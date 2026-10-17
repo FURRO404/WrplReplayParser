@@ -109,6 +109,14 @@ protected:
   // entity manager so they also remain alive while it destroys its stores.
   std::vector<std::unique_ptr<unit::Unit>> owned_units;
   std::unordered_map<uint16_t, unit::Aircraft *> pending_aircraft;
+  // Provisional aircraft that no creation claimed in time; they stay provisional.
+  std::vector<unit::Aircraft *> unresolved_aircraft;
+  // In 126 replays the creation came 20 to 223 ms after the first early sync. A pending aircraft
+  // with no sync for this long is not attached to a creation of its UID.
+  static constexpr uint32_t pending_aircraft_ms = 5000;
+  bool isStale(const unit::Aircraft *aircraft) const {
+    return curr_time_ms - aircraft->provisional_sync_ms > pending_aircraft_ms;
+  }
   friend unit::BallisticParams;
   friend unit::BulletSet;
 
@@ -189,6 +197,8 @@ public:
   /// Identifies the owning state even if its address is reused after destruction.
   inline static std::atomic<uint64_t> next_ground_owner_id{1};
   const uint64_t ground_owner_id = next_ground_owner_id.fetch_add(1, std::memory_order_relaxed);
+  // Set when a queued MPI message fails while an ECS event replays it; fails the packet that caused it.
+  bool queued_message_failed = false;
   std::pmr::vector<mpi::GroundSyncEvent> GroundSyncEvents{get_allocator()};
   /// The weapons of GroundSyncEvents and their rounds; each event holds its range of them.
   std::pmr::vector<mpi::GroundWeaponSync> GroundWeapons{get_allocator()};

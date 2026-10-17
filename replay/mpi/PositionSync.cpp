@@ -29,13 +29,13 @@ bool SensorsControlStates::deserialize(BitStream &bs) {
       field136_0x88 = (uint8_t) bit_packed & 0xf;
       field137_0x89 = (uint8_t) (bit_packed >> 4) & 0x3f;
       field138_0x8a = (uint8_t) (bit_packed >> 10) & 0xf;
-      RET_FAIL(bs.Read(some_data_1));
+      RET_FAIL(bs.Read(unknown_field_1));
       RET_FAIL(bs.Read(packed_val_1));
       RET_FAIL(bs.Read(packed_val_2));
       RET_FAIL(bs.Read(packed_val_3));
       unknown_field_2 = netutils::UNPACKS<int16_t>(packed_val_1, 1.0f);
-      some_data_4 = netutils::UNPACKS<int16_t>(packed_val_2, PI);
-      some_data_5 = netutils::UNPACKS<int16_t>(packed_val_3, PI);
+      unknown_field_4 = netutils::UNPACKS<int16_t>(packed_val_2, PI);
+      unknown_field_5 = netutils::UNPACKS<int16_t>(packed_val_3, PI);
       if (bit_packed < 0) {
         has_unknown_field_6_byte0 = true;
         RET_FAIL(bs.Read(unknown_field_6_data[0]));
@@ -63,13 +63,13 @@ bool SensorsControlStates::deserialize(BitStream &bs) {
       field136_0x88 = flag;
       int16_t v;
       RET_FAIL(bs.Read(v));
-      some_data_1 = netutils::UNPACKS<int16_t>(v, PI);
+      unknown_field_1 = netutils::UNPACKS<int16_t>(v, PI);
       RET_FAIL(bs.Read(unknown_field_2));
       RET_FAIL(bs.Read(unknown_field_3));
-      RET_FAIL(bs.Read(some_data_4));
-      RET_FAIL(bs.Read(some_data_5));
+      RET_FAIL(bs.Read(unknown_field_4));
+      RET_FAIL(bs.Read(unknown_field_5));
       RET_FAIL(bs.ReadBits(reinterpret_cast<uint8_t *>(unknown_field_6_data), 32));
-      RET_FAIL(bs.Read(some_data_7));
+      RET_FAIL(bs.Read(unknown_field_7));
       RET_FAIL(bs.Read(unknown_field_147));
       break;
     }
@@ -81,7 +81,7 @@ bool SensorsControlStates::deserialize(BitStream &bs) {
       RET_FAIL(bs.Read(stuff_is_read));
       has_kind4_state = stuff_is_read;
       if (stuff_is_read) {
-        RET_FAIL(bs.Read(some_data_1));
+        RET_FAIL(bs.Read(unknown_field_1));
         RET_FAIL(bs.Read(unknown_field_2));
         RET_FAIL(bs.Read(unknown_field_3));
       }
@@ -92,12 +92,12 @@ bool SensorsControlStates::deserialize(BitStream &bs) {
   bool stores_vec_thang;
   RET_FAIL(bs.Read(stores_vec_thang));
   if (stores_vec_thang) {
-    RET_FAIL(bs.ReadBits(&field132_0x84, 6));
-    field4_0x4.resize(field132_0x84);
-    for (int i = 0; i < field132_0x84; i++) {
-      RET_FAIL(bs.Read(field4_0x4[i]));
+    RET_FAIL(bs.ReadBits(&contact_count, 6));
+    contacts.resize(contact_count);
+    for (int i = 0; i < contact_count; i++) {
+      RET_FAIL(bs.Read(contacts[i]));
     }
-    RET_FAIL(bs.ReadBits(&field133_0x85, 6));
+    RET_FAIL(bs.ReadBits(&contacts_tail, 6));
   }
   return true;
 }
@@ -282,7 +282,9 @@ bool FMSync(ParserState &state, BitStream &bs) {
     }
   } rollback{state, state.AmmoEvents.size(), state.ControlEvents.size(), state.SensorEvents.size(),
              state.DesignationEvents.size(), state.SeekerEvents.size()};
-  std::vector<std::pair<unit::Aircraft *, SpaceTimeEuler>> positions;
+  // Reused per thread to avoid an allocation on each aircraft packet.
+  thread_local std::vector<std::pair<unit::Aircraft *, SpaceTimeEuler>> positions;
+  positions.clear();
   // New provisional units are owned locally until the entire packet is valid.
   std::vector<std::unique_ptr<unit::Aircraft>> new_aircraft;
   uint16_t uid = 0;
@@ -325,6 +327,8 @@ bool FMSync(ParserState &state, BitStream &bs) {
               new_aircraft.push_back(std::move(aircraft));
             }
           }
+          if (unit->provisional)
+            unit->provisional_sync_ms = state.curr_time_ms;
           mpi::ControlEvent control{state.curr_time_ms, unit};
           RET_FAIL(bs.Read(control.on_ground));
           uint32_t some_uint;
@@ -530,8 +534,21 @@ struct SubVehicleDynData {
 
 
 // AI guns have no unit object; their state is read all the same, into ev only.
+// The vehicle state a decoded record changes outside ev/weapons is collected here and published
+// by GMSync only after the whole record has been read. A read failure partway through the record
+// then drops the update instead of leaving the position history or the turret state half applied.
+struct VehiclePublish {
+  struct TurretState {
+    unit::Weapon *weapon;
+    Point3 angles;
+  };
+  unit::Unit *position_unit = nullptr;
+  SpaceTimeEuler position{};
+  std::vector<TurretState> turret_states{};
+};
+
 bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, mpi::GroundSyncEvent &ev,
-                      mpi::GroundWeaponSync *weapons) {
+                      mpi::GroundWeaponSync *weapons, VehiclePublish &publish) {
   ZoneScoped;
   RET_FAIL(bs.Read(ev.spawn_counter));
   bool b1;
@@ -598,11 +615,10 @@ bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, mpi::Grou
       unit_position.z = fv3;
     }
     if (ref->ref_1 && ref->ref_1->isGround()) {
-      auto ground = ref->ref_1;
-      auto ref = ground->positions.reserveOne();
-      ref->euler = direction;
-      ref->location = unit_position;
-      ground->positions.checkAndPush(&state);
+      // Held back until the record is known good, see VehiclePublish.
+      publish.position_unit = ref->ref_1;
+      publish.position.euler = direction;
+      publish.position.location = unit_position;
     }
     Point3 out_2;
     if (ref->val1) {
@@ -753,8 +769,7 @@ bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, mpi::Grou
         }
         // A ship sends its preset weapons first, then commonWeapons: not the unit's weapon order.
         if (weap && weap->turret_desc && !ev.is_ship()) {
-          auto turret = weap->turret_desc.get();
-          turret->setData({turret_x, turret_y, turret_z});
+          publish.turret_states.push_back({weap, {turret_x, turret_y, turret_z}});
         }
       }
     }
@@ -801,23 +816,7 @@ bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, mpi::Grou
       if (state.keep.designations)
         state.DesignationEvents.push_back({state.curr_time_ms, ref->ref_1, i, targets[i]});
   }
-  if (ref->ref_1) {
-    ref->ref_1->calculateTurretData();
-    /*LOGI("");
-    for (auto &weap: ref->ref_1->weapons) {
-      LOGI("{};{}", state.curr_time_ms / 1000.f, weap.blk_path);
-      if (weap.turret_desc) {
-        auto turret = weap.turret_desc.get();
-        LOGI("  head: ({}) ({})", turret->head->turret_rel.toString(0), turret->head->turret_abs.toString(0));
-        LOGI("  gun:  ({}) ({})", turret->gun->turret_rel.toString(0), turret->gun->turret_abs.toString(0));
-      }
-    }*/
-    for (auto &weapon: ref->ref_1->weapons) {
-      if (weapon.turret_desc) {
-        weapon.turret_desc->push_curr_state(state);
-      }
-    }
-  }
+  // The turret state is published by GMSync once the record is known good, see VehiclePublish.
   return true;
 }
 
@@ -855,6 +854,35 @@ bool GMSync(ParserState &state, BitStream &bs) {
   uint16_t uid_lower_base = uid_lower;
   RET_FAIL(bs.Read(time_at));
   RET_FAIL(bs.Read(packet_reliability_order));
+  // A packet holds the records of several vehicles. Nothing of it is published until all of them are
+  // read: a failed read drops the events, pools and ground syncs the earlier records appended.
+  std::vector<std::pair<uint16_t, uint32_t>> last_before; // GroundSyncLast entries this packet changed
+  struct PacketRollback {
+    ParserState &s;
+    size_t sensors, designations, seekers, weapons, rounds, syncs;
+    std::vector<std::pair<uint16_t, uint32_t>> &last_before;
+    bool active = true;
+    ~PacketRollback() {
+      if (!active)
+        return;
+      s.SensorEvents.resize(sensors);
+      s.DesignationEvents.resize(designations);
+      s.SeekerEvents.resize(seekers);
+      s.GroundWeapons.resize(weapons);
+      s.GroundRounds.resize(rounds);
+      s.GroundSyncEvents.resize(syncs);
+      for (auto it = last_before.rbegin(); it != last_before.rend(); ++it)
+        s.GroundSyncLast[it->first] = it->second;
+    }
+  } packet_rollback{state,
+                    state.SensorEvents.size(),
+                    state.DesignationEvents.size(),
+                    state.SeekerEvents.size(),
+                    state.GroundWeapons.size(),
+                    state.GroundRounds.size(),
+                    state.GroundSyncEvents.size(),
+                    last_before};
+  std::vector<std::pair<unit::Unit *, VehiclePublish>> publishes;
   for (; uid_lower < uid_upper; uid_lower++) {
     TankRef ref{};
     bool bool1;
@@ -889,17 +917,19 @@ bool GMSync(ParserState &state, BitStream &bs) {
         // With the list kept, the weapons go to the pool, and are dropped again when the event is not
         // kept (no state, a failed read, or the same state as before); else to a scratch array.
         const bool keep = state.keep.ground_syncs;
-        struct Rollback {
+        struct PoolRollback {
           ParserState &s;
           size_t w, r;
           bool active;
-          ~Rollback() {
+          ~PoolRollback() {
             if (active) {
               s.GroundWeapons.resize(w);
               s.GroundRounds.resize(r);
             }
           }
         } rollback{state, state.GroundWeapons.size(), state.GroundRounds.size(), keep};
+        // State the record collects before it is known good; published after the last field is read.
+        VehiclePublish publish{};
         thread_local std::vector<mpi::GroundWeaponSync> scratch{};
         mpi::GroundWeaponSync *weapons;
         if (keep) {
@@ -914,16 +944,27 @@ bool GMSync(ParserState &state, BitStream &bs) {
         if (isCompressed) {
           auto &hist = state.NetDelta.getHistory(uid_lower);
           auto res = state.NetDelta.netDelta.readDelta(bs, &hist);
-          if (res.ok) {
-            have_state = ParseVehicleInfo(state, res.bs, &ref, ev, weapons);
-            if (!have_state && ref.ref_1 != nullptr) {
-              LOGE("Failed to parse info for ground unit {} of uid {}", ref.ref_1->unit_name, ref.ref_1->uid);
+          if (!res.ok) {
+            // A missing base packet (isResetNeeded) is not a decode failure of this record: its state
+            // is skipped, as before, and the rest of the record still read. Anything else means the
+            // delta header itself could not be read, which must fail the packet instead of being
+            // dropped silently.
+            if (!res.isResetNeeded)
+              return false;
+          } else {
+            have_state = ParseVehicleInfo(state, res.bs, &ref, ev, weapons, publish);
+            if (!have_state) {
+              if (ref.ref_1 != nullptr)
+                LOGE("Failed to parse info for ground unit {} of uid {}", ref.ref_1->unit_name, ref.ref_1->uid);
+              // The outer stream is still in step, as the state came in its own length-prefixed
+              // block, but a state that does not decode is a decode failure like any other.
+              return false;
             }
           }
         } else {
           RET_FAIL(bs.GetNumberOfUnreadBits() >= ((8 - (bs.GetReadOffset() & 7)) & 7));
           bs.AlignReadToByteBoundary();
-          have_state = ParseVehicleInfo(state, bs, &ref, ev, weapons);
+          have_state = ParseVehicleInfo(state, bs, &ref, ev, weapons, publish);
           if (!have_state)
             return false; // The remaining fields cannot be located after a short state.
         }
@@ -985,9 +1026,12 @@ bool GMSync(ParserState &state, BitStream &bs) {
         }
         RET_FAIL(bs.GetNumberOfUnreadBits() >= ((8 - (bs.GetReadOffset() & 7)) & 7));
         bs.AlignReadToByteBoundary();
+        if (have_state)
+          publishes.emplace_back(ref.ref_1, std::move(publish));
         if (keep && have_state && !SameAsLast(state, ev)) {
           if (ev.uid >= state.GroundSyncLast.size())
             state.GroundSyncLast.resize(ev.uid + 1);
+          last_before.emplace_back(ev.uid, state.GroundSyncLast[ev.uid]);
           state.GroundSyncEvents.push_back(ev);
           state.GroundSyncLast[ev.uid] = uint32_t(state.GroundSyncEvents.size());
           rollback.active = false;
@@ -995,6 +1039,22 @@ bool GMSync(ParserState &state, BitStream &bs) {
       }
     }
   }
+  // Every record is read: publish the vehicle states they described.
+  for (auto &[unit, publish]: publishes) {
+    if (publish.position_unit) {
+      *publish.position_unit->positions.reserveOne() = publish.position;
+      publish.position_unit->positions.checkAndPush(&state);
+    }
+    if (unit) {
+      for (auto &turret_state: publish.turret_states)
+        turret_state.weapon->turret_desc->setData(turret_state.angles);
+      unit->calculateTurretData();
+      for (auto &weapon: unit->weapons)
+        if (weapon.turret_desc)
+          weapon.turret_desc->push_curr_state(state);
+    }
+  }
+  packet_rollback.active = false;
   return true;
 }
 
@@ -1186,9 +1246,7 @@ bool ParseWeapon(ParserState &state, const BitStream &bs, get_weapon_cb cb) {
   return true;
 }
 
-int count = 0;
 bool WeaponSync(ParserState &state, BitStream &bs) {
-  count++;
   ZoneScoped;
   uint8_t rocket_count;
   RET_FAIL(bs.Read(rocket_count));

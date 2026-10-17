@@ -25,21 +25,21 @@ struct SensorsControlStates {
   float unpacked_3 = 0;
   int unknown_field_149 = 0; ///< signed 2-bit value, present when has_unknown_fields_149_150
   int unknown_field_150 = 0; ///< signed 2-bit value, present when has_unknown_fields_149_150
-  uint8_t field132_0x84 = 0;
-  uint8_t field133_0x85 = 0;
-  std::vector<uint32_t> field4_0x4{};
+  uint8_t contact_count = 0; ///< 6-bit count of contacts
+  uint8_t contacts_tail = 0; ///< 6-bit value after the contacts, meaning unknown
+  std::vector<uint32_t> contacts{}; ///< see contact_uids()
   uint8_t sensor_type_maybe = 0;
   uint8_t field136_0x88 = 0;
   uint8_t field137_0x89 = 0;
   uint8_t field138_0x8a = 0;
-  float some_data_1{};
+  float unknown_field_1{}; ///< kind 1: mode_time(); kind 2: normalized int16 times pi; kind 4: float32
   float unknown_field_2{}; ///< unknown field 2: kind 1 normalized int16; kinds 2/4 float32
   float unknown_field_3{}; ///< unknown field 3: float32, sent for kinds 2/4 when their data is present
-  float some_data_4{};
-  float some_data_5{};
+  float unknown_field_4{}; ///< kind 1: scan_az(); kind 2: float32
+  float unknown_field_5{}; ///< kind 1: scan_el(); kind 2: float32
   /// Field 6: four raw bytes for kind 2; kind 1 byte 0 is raw and byte 1 holds a decoded 1-bit value.
   char unknown_field_6_data[4]{};
-  int32_t some_data_7{};
+  int32_t unknown_field_7{}; ///< kind 2 only, int32
   float unknown_field_147{}; ///< unknown field 147: float32, sent for kind 2 when on
   bool has_unknown_field_6_byte0 = false;
   bool has_unknown_fields_149_150 = false; ///< also indicates field 6 byte 1 is present
@@ -67,17 +67,17 @@ struct SensorsControlStates {
     return kind1() && field138_0x8a != 0xf ? std::optional<uint8_t>(field138_0x8a) : std::nullopt;
   }
   /// Battle time in seconds of the last mode change.
-  std::optional<float> mode_time() const { return kind1() ? std::optional<float>(some_data_1) : std::nullopt; }
+  std::optional<float> mode_time() const { return kind1() ? std::optional<float>(unknown_field_1) : std::nullopt; }
   /// Scan centre in radians, relative to the vehicle: yaw about +Y, then pitch about +Z
   /// (after the vehicle's own yaw, pitch and roll). In search, the zone the player set; in
   /// track, toward the target, up to the scan pattern's azimuth and elevation limits.
-  std::optional<float> scan_az() const { return kind1() ? std::optional<float>(some_data_4) : std::nullopt; }
-  std::optional<float> scan_el() const { return kind1() ? std::optional<float>(some_data_5) : std::nullopt; }
+  std::optional<float> scan_az() const { return kind1() ? std::optional<float>(unknown_field_4) : std::nullopt; }
+  std::optional<float> scan_el() const { return kind1() ? std::optional<float>(unknown_field_5) : std::nullopt; }
   /// Unit uids of the targets the sensor detects at this sync (search, TWS track files, the
   /// tracked target). A contact names a unit as 0xFFFF0000 | uid; other values are left out.
   std::vector<uint16_t> contact_uids() const {
     std::vector<uint16_t> out;
-    for (uint32_t c: field4_0x4)
+    for (uint32_t c: contacts)
       if ((c >> 16) == 0xFFFF)
         out.push_back(c & 0xFFFF);
     return out;

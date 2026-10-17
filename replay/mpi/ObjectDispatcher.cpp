@@ -91,7 +91,7 @@ namespace mpi {
     return nullptr;
   }
 
-  void GeneralObject::applyMpiMessage(const Message *m) {
+  bool GeneralObject::applyMpiMessage(const Message *m) {
     ZoneScoped;
     auto mid = m->id;
     auto bs = (BitStream *) &m->payload;
@@ -154,22 +154,25 @@ namespace mpi {
       case MPI_PACKETS::Tank1:
       case MPI_PACKETS::Tank2: {
         auto tankM = (TankMessage *) m;
-        auto ret = GMSync(*state, tankM->data);
-        if (!ret) {
+        // The record's remaining fields cannot be located after a short state, so a failure has
+        // to fail the packet instead of leaving a half-applied vehicle behind.
+        if (!GMSync(*state, tankM->data)) {
           LOGE("Failed to read TankMessage payload");
+          return false;
         }
-        return;
+        return true;
       }
       case MPI_PACKETS::Rocket1:
       case MPI_PACKETS::Rocket2: {
         auto bsM = (BSMessage *) m;
-        bool ret = WeaponSync(*state, bsM->data);
-        if (!ret) {
-          LOGE("Failed to read We payload");
+        if (!WeaponSync(*state, bsM->data)) {
+          LOGE("Failed to read WeaponSync payload");
+          return false;
         }
-        return;
+        return true;
       }
     }
+    return true;
   }
 
   ecs::EntityId eid_from_ext_uid(uint32_t ext_uid) { return ecs::EntityId((ext_uid & 0xFF) << 0x16 | ext_uid >> 0x8); }
@@ -246,7 +249,7 @@ namespace mpi {
     return nullptr; // don't have any unit message parsing setup for now
   }
 
-  void MpiQueueObject::applyMpiMessage(const Message *m) {
+  bool MpiQueueObject::applyMpiMessage(const Message *m) {
     ZoneScopedN("MpiQueueObject::applyMpiMessage");
     if (m) {
       auto eid = eid_from_ext_uid(this->mpiObjectExtUID);
@@ -268,6 +271,7 @@ namespace mpi {
       bs.Write(write_offs);
       bs.SetWriteOffset(after_all_write);
     }
+    return true;
   }
 
   bool MpiQueueObject::deserialize(BitStream &other_bs, int data_size, ParserState *state) {
@@ -369,10 +373,11 @@ namespace mpi {
     return nullptr;
   }
 
-  void LocalClientObject::applyMpiMessage(const Message *m) {
+  bool LocalClientObject::applyMpiMessage(const Message *m) {
     if (m->id == MPI_PACKETS::ReplayCockpitParams)
       if (state->keep.cockpit)
         state->CockpitEvents.push_back(((const CockpitMessage *) m)->cockpit);
+    return true;
   }
 
   bool CockpitMessage::readPayload(ParserState *state) {

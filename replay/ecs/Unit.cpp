@@ -716,13 +716,13 @@ mpi::Message *GMReflectable::dispatchMpiMessage(mpi::MessageID mid) {
   return BaseExtReflectable::dispatchMpiMessage(mid);
 }
 
-void GMReflectable::applyMpiMessage(const mpi::Message *m) { BaseExtReflectable::applyMpiMessage(m); }
+bool GMReflectable::applyMpiMessage(const mpi::Message *m) { return BaseExtReflectable::applyMpiMessage(m); }
 
 mpi::Message *FMWReflectable::dispatchMpiMessage(mpi::MessageID mid) {
   return BaseExtReflectable::dispatchMpiMessage(mid);
 }
 
-void FMWReflectable::applyMpiMessage(const mpi::Message *m) { BaseExtReflectable::applyMpiMessage(m); }
+bool FMWReflectable::applyMpiMessage(const mpi::Message *m) { return BaseExtReflectable::applyMpiMessage(m); }
 
 mpi::Message *BaseExtReflectable::dispatchMpiMessage(mpi::MessageID mid) {
   ZoneScoped;
@@ -765,7 +765,7 @@ mpi::Message *BaseExtReflectable::dispatchMpiMessage(mpi::MessageID mid) {
   return nullptr;
 }
 
-void BaseExtReflectable::applyMpiMessage(const mpi::Message *m) {
+bool BaseExtReflectable::applyMpiMessage(const mpi::Message *m) {
   ZoneScoped;
   switch (m->id) {
     case MPI_PACKETS::FmwRpm: {
@@ -843,4 +843,5 @@ void BaseExtReflectable::applyMpiMessage(const mpi::Message *m) {
     }
     default: break;
   }
+  return true;
 }

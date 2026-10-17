@@ -270,11 +270,11 @@ void PyBattleMessages::include(py::module_ &m) {
       .def_property_readonly("contacts",
                              [](const mpi::SensorEvent &e) {
                                py::list out;
-                               for (uint32_t c: e.state.field4_0x4)
+                               for (uint32_t c: e.state.contacts)
                                  out.append(c);
                                return out;
                              })
-      .def_property_readonly("contacts_tail", [](const mpi::SensorEvent &e) { return e.state.field133_0x85; })
+      .def_property_readonly("contacts_tail", [](const mpi::SensorEvent &e) { return e.state.contacts_tail; })
       .def_property_readonly("contact_uids", [](const mpi::SensorEvent &e) { return e.state.contact_uids(); },
                              "Unit uids of the targets the sensor detects at this sync");
 

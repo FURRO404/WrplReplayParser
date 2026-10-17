@@ -40,7 +40,7 @@ namespace mpi // message passing interface
   struct IMessageListener // subsystem that handles messages (typically - local, multiplayer, replay...)
   {
     IMessageListener *next = nullptr;
-    virtual void receiveMpiMessage(const Message *msg, SystemID receiver) = 0; // process message
+    virtual bool receiveMpiMessage(const Message *msg, SystemID receiver) = 0; // process message
   };
   class IObject // base class for objects that handle messages
   {
@@ -67,7 +67,7 @@ namespace mpi // message passing interface
     [[nodiscard]] ObjectID getUID() const { return mpiObjectUID; }
 
     virtual Message *dispatchMpiMessage(MessageID mid) = 0; // construct message instance by message id
-    virtual void applyMpiMessage(const Message *m) = 0; // execute message
+    virtual bool applyMpiMessage(const Message *m) = 0; // execute message, false if it could not be decoded
   };
 
 #define MPI_HEADER_SIZE (sizeof(mpi::ObjectID) + sizeof(mpi::MessageID) + sizeof(mpi::SystemID))
@@ -176,7 +176,7 @@ namespace mpi // message passing interface
       bs.Write((const char *) payload.GetData(), payload.GetNumberOfBytesUsed());
     }
 
-    void apply() const { obj->applyMpiMessage(this); } // actually execute this message
+    bool apply() const { return obj->applyMpiMessage(this); } // actually execute this message
 
     virtual const char *getDebugMpiName() const { return ""; }
 
@@ -200,8 +200,8 @@ namespace mpi // message passing interface
   Message *dispatch(const BitStream &bs, ParserState *state,
                     bool copy_payload = false); // assemble message by BitStream. Note : message should be
   // destroyed after use (i.e. msg->destroy())
-  void sendto(Message *m, SystemID receiver); // send message, also apply if need to
-  inline void send(Message *m) { sendto(m, INVALID_SYSTEM_ID); }
+  bool sendto(Message *m, SystemID receiver); // send message, also apply if need to; false if a handler failed
+  inline bool send(Message *m) { return sendto(m, INVALID_SYSTEM_ID); }
   void register_listener(IMessageListener *l); // register listener for message handling
   void unregister_listener(IMessageListener *l); // invert operation
 

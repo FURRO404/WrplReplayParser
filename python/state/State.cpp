@@ -18,6 +18,50 @@ std::vector<Payload *> collect_all_payloads(ParserState &state);
 std::vector<Torpedo *> collect_all_torpedoes(ParserState &state);
 std::vector<Jettisoned *> collect_all_jettisoned(ParserState &state);
 
+// The collectors return pointers owned by the state's entity manager, so a Python object made
+// from one would dangle once the state is destroyed. Cast each element with the state as its
+// parent: that keeps the parser alive as long as any collected element is, whether or not the
+// returned list itself is kept.
+// pybind hands back an already registered wrapper as it is, without the parent policy, so the
+// keep-alive is added to each element explicitly.
+template<typename T>
+static py::list collect_owned(py::object self, std::vector<T *> items) {
+  py::list out(items.size());
+  for (size_t i = 0; i < items.size(); i++) {
+    py::object item = py::cast(items[i], py::return_value_policy::reference);
+    py::detail::keep_alive_impl(item, self);
+    PyList_SET_ITEM(out.ptr(), i, item.release().ptr());
+  }
+  return out;
+}
+
+// An event list as a list of copies. A copy does not dangle when a later packet reallocates the
+// state's vector, but the units and messages it points at belong to the state, so each copy keeps
+// the state alive too.
+template<auto Member>
+static py::list event_list(py::object self) {
+  const auto &events = self.cast<const ParserState &>().*Member;
+  py::list out(events.size());
+  for (size_t i = 0; i < events.size(); i++) {
+    py::object event = py::cast(events[i], py::return_value_policy::copy);
+    py::detail::keep_alive_impl(event, self);
+    PyList_SET_ITEM(out.ptr(), i, event.release().ptr());
+  }
+  return out;
+}
+
+// The bindings below hand most of the parser's event lists to Python as copies of their elements
+// (see the note on the properties), which needs a copy-constructible event type. Fail at compile
+// time if a future event type cannot be copied, rather than when a script first reads the list.
+template<typename... Ts>
+inline constexpr bool copyable_events
+  = (std::is_copy_constructible_v<Ts> && ...);
+static_assert(copyable_events<mpi::HitEffect, mpi::HitAnalysis, mpi::HitDamage, mpi::HitDirection, mpi::HitExplosion,
+                              mpi::HitOutcome, mpi::AmmoEvent, mpi::ShotEvent, mpi::SensorEvent, mpi::DesignationEvent,
+                              mpi::SeekerEvent, mpi::ControlEvent, mpi::GroundSyncEvent, mpi::StoreSyncEvent,
+                              mpi::SpotEvent, mpi::SpawnEvent, mpi::CockpitEvent, mpi::RpmEvent, ChatMessage>,
+              "an event list handed to Python by copy needs a copy-constructible event type");
+
 void initialize_wrapper(const std::string &VromfsPath, const std::string &grp_path, const std::string &logfile_path,
                         bool fonts = false, bool lang = true, bool mis = true) {
   std::thread t(initialize, VromfsPath, grp_path, logfile_path, fonts, lang, mis);
@@ -109,11 +153,7 @@ void PyReplayState::include(py::module_ &m) {
     .def("getUnitEid", &ParserState::getUnitEid, py::arg("uid"))
     .def("getUnitRef", &ParserState::getUnitObj, py::arg("uid"), py::keep_alive<0, 1>())
     .def_property_readonly("pending_aircraft", [](py::object self) {
-      auto &state = self.cast<ParserState &>();
-      py::list result;
-      for (auto *aircraft : state.getPendingAircraft())
-        result.append(py::cast(aircraft, py::return_value_policy::reference_internal, self));
-      return result;
+      return collect_owned(self, self.cast<ParserState &>().getPendingAircraft());
     },
                            "Aircraft with sync data but no matching ECS creation yet. Their UID and positions "
                            "remain available if creation never arrives.")
@@ -132,37 +172,43 @@ void PyReplayState::include(py::module_ &m) {
     .def("rewind_to", &ParserState::rewindToMs,
          py::doc("Rewind the Parser state to any particular time in the replay. Not exact"))
     .def_readonly("current_packet_index", &ParserState::current_packet_index)
-    .def_readonly("chat_messages", &ParserState::chatMessages)
+    // The parse keeps appending to the event lists below, so pybind's own list caster would hand
+    // Python each element bound as a reference into the state's vector: once a later packet
+    // reallocated it, a retained element would point at freed memory. event_list hands out copies
+    // that keep the state alive instead.
+    .def_property_readonly("chat_messages", &event_list<&ParserState::chatMessages>)
     .def_readonly("battle_messages", &ParserState::BattleMessages)
-    .def_readonly("hit_effects", &ParserState::HitEffects,
+    .def_property_readonly("hit_effects", &event_list<&ParserState::HitEffects>,
                   "0xF0E9, one record per hit including harmless ones")
-    .def_readonly("hit_analysis", &ParserState::HitAnalyses,
+    .def_property_readonly("hit_analysis", &event_list<&ParserState::HitAnalyses>,
                   "0xF15F, hit camera record; sent twice per hit and not for every hit")
-    .def_readonly("hit_damage", &ParserState::HitDamages,
+    .def_property_readonly("hit_damage", &event_list<&ParserState::HitDamages>,
                   "UnitOnEffectiveHit / UnitOnEffectiveCritHit; join to hit_effects by projectile")
-    .def_readonly("hit_directions", &ParserState::HitDirections,
+    .def_property_readonly("hit_directions", &event_list<&ParserState::HitDirections>,
                   "0xF144, world travel direction; join by victim and time")
-    .def_readonly("hit_explosions", &ParserState::HitExplosions,
+    .def_property_readonly("hit_explosions", &event_list<&ParserState::HitExplosions>,
                   "0xF133, a projectile went off next to the unit; joins by projectile")
-    .def_readonly("hit_outcomes", &ParserState::HitOutcomes,
+    .def_property_readonly("hit_outcomes", &event_list<&ParserState::HitOutcomes>,
                   "0xF0C2, what the hit did: penetration, ricochet, fire, damaged parts")
-    .def_readonly("ammo_events", &ParserState::AmmoEvents,
+    .def_property_readonly("ammo_events", &event_list<&ParserState::AmmoEvents>,
                   "Rounds left in a barrel: 0xF0BD for a ground vehicle, the aircraft sync for a plane. "
                   "A step down is that many rounds fired. The aircraft one rides every update, so values "
                   "repeat; a ground vehicle only sends it on a change.")
-    .def_readonly("sensors", &ParserState::SensorEvents, "Sensor states from the aircraft and ground vehicle syncs")
-    .def_readonly("designations", &ParserState::DesignationEvents,
+    .def_property_readonly("sensors", &event_list<&ParserState::SensorEvents>,
+                  "Sensor states from the aircraft and ground vehicle syncs")
+    .def_property_readonly("designations", &event_list<&ParserState::DesignationEvents>,
                   "Target designations from the aircraft and ground vehicle syncs")
-    .def_readonly("cockpit", &ParserState::CockpitEvents,
+    .def_property_readonly("cockpit", &event_list<&ParserState::CockpitEvents>,
                   "0xD04A, client replays only: the author's cockpit instruments as (id, value) pairs")
-    .def_readonly("rpms", &ParserState::RpmEvents, "0xD047: the RPM of each engine of an aircraft")
-    .def_readonly("spots", &ParserState::SpotEvents,
+    .def_property_readonly("rpms", &event_list<&ParserState::RpmEvents>,
+                  "0xD047: the RPM of each engine of an aircraft")
+    .def_property_readonly("spots", &event_list<&ParserState::SpotEvents>,
                   "0xF037: the spotter sees the spotted unit, which gets its red mark on the spotter's screen")
-    .def_readonly("spawns", &ParserState::SpawnEvents,
+    .def_property_readonly("spawns", &event_list<&ParserState::SpawnEvents>,
                   "One per unit entity the ECS creates: player vehicles, slot dummy planes, AI and support units")
-    .def_readonly("controls", &ParserState::ControlEvents,
+    .def_property_readonly("controls", &event_list<&ParserState::ControlEvents>,
                   "The pilot's controls and the engines of each aircraft, from the flight-model syncs")
-    .def_readonly("ground_syncs", &ParserState::GroundSyncEvents,
+    .def_property_readonly("ground_syncs", &event_list<&ParserState::GroundSyncEvents>,
                   "0xF074: motion, drive, turret angles and weapon state of each ground vehicle, ship and AI gun; "
                   "an event only when the vehicle's state changed")
     .def(
@@ -189,11 +235,11 @@ void PyReplayState::include(py::module_ &m) {
         return out;
       },
       py::arg("event"), "The weapons of one of ground_syncs, with their rounds")
-    .def_readonly("store_syncs", &ParserState::StoreSyncEvents,
+    .def_property_readonly("store_syncs", &event_list<&ParserState::StoreSyncEvents>,
                   "0xF11A: server time and velocity of each missile or rocket in flight")
-    .def_readonly("seekers", &ParserState::SeekerEvents,
+    .def_property_readonly("seekers", &event_list<&ParserState::SeekerEvents>,
                   "Seeker blocks of stores in flight, aircraft and ground vehicles; the known ones decoded")
-    .def_readonly("shots", &ParserState::ShotEvents,
+    .def_property_readonly("shots", &event_list<&ParserState::ShotEvents>,
                   "0xF0B1 single shot, 0xF01B / 0xF01C trigger down and up")
     .def(
       "LoadFromReader",
@@ -250,13 +296,24 @@ void PyReplayState::include(py::module_ &m) {
       py::arg("reader"), py::arg("callback") = nullptr,
       "Load packets until the end marker or reader exhaustion. Raises RuntimeError on a packet decode failure; "
       "aircraft events and positions from the failed packet are discarded.")
-    .def("collect_all_units", [](ParserState &state) { return collect_all_units(state); })
-    .def("collect_all_rockets", [](ParserState &state) { return collect_all_rockets(state); })
-    .def("collect_all_bombs", [](ParserState &state) { return collect_all_bombs(state); })
-    .def("collect_all_payloads", [](ParserState &state) { return collect_all_payloads(state); })
-    .def("collect_all_torpedoes", [](ParserState &state) { return collect_all_torpedoes(state); })
-    .def("collect_all_jettisoned",
-         [](ParserState &state) { return collect_all_jettisoned(state); });
+    .def("collect_all_units", [](py::object self) {
+      return collect_owned(self, collect_all_units(self.cast<ParserState &>()));
+    })
+    .def("collect_all_rockets", [](py::object self) {
+      return collect_owned(self, collect_all_rockets(self.cast<ParserState &>()));
+    })
+    .def("collect_all_bombs", [](py::object self) {
+      return collect_owned(self, collect_all_bombs(self.cast<ParserState &>()));
+    })
+    .def("collect_all_payloads", [](py::object self) {
+      return collect_owned(self, collect_all_payloads(self.cast<ParserState &>()));
+    })
+    .def("collect_all_torpedoes", [](py::object self) {
+      return collect_owned(self, collect_all_torpedoes(self.cast<ParserState &>()));
+    })
+    .def("collect_all_jettisoned", [](py::object self) {
+      return collect_owned(self, collect_all_jettisoned(self.cast<ParserState &>()));
+    });
 }
 
 PyReplayState py_replay_state{};

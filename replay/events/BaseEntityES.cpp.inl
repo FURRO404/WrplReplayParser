@@ -161,7 +161,12 @@ static void on_unit_appear_mpi_es(const ecs::EventEntityCreated &evt, const ecs:
         sz ^= mpi::QueuePacketTypes::MPI;
         auto m = mpi::dispatch(bs, &state, false);
         if (m != nullptr) {
-          mpi::send(m);
+          // A queued message replays through the normal handlers, inside the ECS event of the packet
+          // that created the unit. ParsePacket fails that packet once the event is done.
+          if (!mpi::send(m)) {
+            LOGE("Failed to apply queued MPI message {:#x}", m->id);
+            state.queued_message_failed = true;
+          }
           if (m->delete_message)
             state._delete(m);
         }
