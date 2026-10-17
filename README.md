@@ -12,6 +12,11 @@ This attempts to be buildable for:
 Windows: MSYS2 minGW, MSVC
 
 Linux (WSL2) gcc
+
+## Known aircraft sync limitation
+
+Some valid replays contain an aircraft sync before the corresponding ECS unit is created. The parser currently requires the unit to exist when it reads the sync, so `LoadFromReader` raises `RuntimeError` and discards the aircraft updates from that packet. For example, server replay `127b004900163e25` has a sync for UID 400 at 84.514 seconds and creates that unit at 84.554 seconds. Handling this ordering remains open; the failure does not necessarily indicate a malformed packet.
+
 # TODO
 
 setup loading of char.vromfs.bin and proper translation code
