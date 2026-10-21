@@ -3,7 +3,7 @@
 #include "vector"
 #include "cstdint"
 #include "translate.h"
-#include "danet/BitStream.h"
+#include "daNet/bitStream.h"
 #include "math/dag_Point3.h"
 #include <ioSys/dag_dataBlock.h>
 #include "ecs/entityId.h"

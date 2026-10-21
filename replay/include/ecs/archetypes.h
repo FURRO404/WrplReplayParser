@@ -236,7 +236,7 @@ namespace ecs {
     bool archetypeExists(archetype_t archetype, MgrArchetypeStorage &storage);
 
     archetype_t createArchetype(const component_index_t *__restrict components, uint32_t components_cnt,
-                                DataComponents &dataComponents, ComponentTypes &componentTypes,
+                                DataComponents &dataComponents, componentTypes &componentTypes,
                                 template_t parent_template);
     [[nodiscard]] archetype_component_id getComponentsCount(uint32_t archetype) const;
 

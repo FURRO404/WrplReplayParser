@@ -3,8 +3,8 @@
 #include <cstdint>
 #include <optional>
 #include <vector>
-#include "danet/BitStream.h"
-#include "danet/dag_netUtils.h"
+#include "daNet/bitStream.h"
+#include "daNet/dag_netUtils.h"
 #include "math/dag_mathBase.h"
 #include "math/dag_Point3.h"
 #include "ecs/entityId.h"

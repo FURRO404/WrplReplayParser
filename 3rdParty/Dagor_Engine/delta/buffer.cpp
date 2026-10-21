@@ -1,7 +1,7 @@
 
 // Copyright (C) Gaijin Games KFT.  All rights reserved.
 
-#include <danet/delta/buffer.h>
+#include <daNet/delta/buffer.h>
 
 #include "diff_impl.h"
 

@@ -2,7 +2,7 @@
 #include "ecs//ComponentTypes/objectType.h"
 #include "ecs//ComponentTypes/arrayType.h"
 #include "ecs/ComponentTypes/listType.h"
-#include "ecs/ComponentTypes.h"
+#include "ecs/componentTypes.h"
 
 #include "ecs/baseIo.h"
 
@@ -36,7 +36,7 @@ namespace ecs {
 
 
 namespace ecs {
-  type_index_t ComponentTypes::registerType(const char *name, ecs::component_type_t type, uint32_t data_size,
+  type_index_t componentTypes::registerType(const char *name, ecs::component_type_t type, uint32_t data_size,
                                             ecs::ComponentSerializer *io, ecs::create_ctm_t ctm, ecs::destroy_ctm_t dtm,
                                             ComponentTypeFlags flags) {
     const type_index_t ctypeId = findType(type);
@@ -60,7 +60,7 @@ namespace ecs {
     return (type_index_t) getTypeCount() - 1;
   }
 
-  void ComponentTypes::initialize() {
+  void componentTypes::initialize() {
     // clear();
     ECS_LOGD1("ecs: initialize component Types");
     // initialize eid and tag first, for debugging purposes?
@@ -69,7 +69,7 @@ namespace ecs {
     }
   }
 
-  ComponentTypes::~ComponentTypes() {
+  componentTypes::~componentTypes() {
     for (auto &x: this->types) {
       if (x.ctm) {
         x.destroy(x.ctm);

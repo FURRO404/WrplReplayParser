@@ -1,7 +1,7 @@
 #include "state/ParserState.h"
 #include "mpi/PositionSync.h"
 #include "Unit.h"
-#include "danet/dag_netUtils.h"
+#include "daNet/dag_netUtils.h"
 #include "math/dag_mathAng.h"
 #include <algorithm>
 #include <cstring>

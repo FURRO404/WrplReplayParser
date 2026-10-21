@@ -98,7 +98,7 @@ namespace ecs {
       if (need_constructor(componentTypeInfo.flags)) {
         // yes, this const cast is ugly. It yet has to be here, there is no other way (besides explicit method in entity
         // manager of course).
-        ctm = const_cast<ComponentTypes *>(componentTypes)->getCTM(typeId);
+        ctm = const_cast<componentTypes *>(componentTypes)->getCTM(typeId);
         G_ASSERTF(ctm, "type manager for type {:#x} ({}) missing", userType, typeId);
       }
       if (ctm)

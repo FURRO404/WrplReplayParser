@@ -4,7 +4,7 @@
 //
 #pragma once
 
-#include <danet/BitStream.h>
+#include <daNet/bitStream.h>
 #include "span"
 
 namespace net

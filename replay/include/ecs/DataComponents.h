@@ -3,7 +3,7 @@
 #ifndef MYEXTENSION_DATACOMPONENTS_H
 #define MYEXTENSION_DATACOMPONENTS_H
 
-#include "ecs/ComponentTypes.h"
+#include "ecs/componentTypes.h"
 #include "StringTableAllocator.h"
 
 namespace ecs {
@@ -140,9 +140,9 @@ namespace ecs {
     inline std::string_view getName(component_t hash) const { return getName(getIndex(hash)); }
 
     component_index_t createComponent(HashedConstString name_, type_index_t component_type, ComponentSerializer *io,
-                                      ComponentTypes &types);
+                                      componentTypes &types);
 
-    void initialize(ComponentTypes &types);
+    void initialize(componentTypes &types);
 
     inline size_t size() { return components.size(); }
 

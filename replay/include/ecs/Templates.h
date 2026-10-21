@@ -7,7 +7,7 @@
 #include <set>
 #include <mutex>
 
-#include "ecs/ComponentTypes.h"
+#include "ecs/componentTypes.h"
 #include "ecs/typesAndLimits.h"
 #include "ecs/componentsMap.h"
 #include "ecs/archetypes.h"
@@ -297,7 +297,7 @@ namespace ecs {
     void applyFrom(TemplateDB &&db);
 
 
-    void printTempl(const Template &t, int spacing, ComponentTypes &types, DataComponents &comps);
+    void printTempl(const Template &t, int spacing, componentTypes &types, DataComponents &comps);
     friend GState;
     friend EntityManager;
     friend LoadContext; // so it can access dtor

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "typesAndLimits.h"
-#include "ecs/ComponentTypes.h"
+#include "ecs/componentTypes.h"
 #include "ecs/component.h"
 #include "ecs/ComponentRef.h"
 #include "ecs/DataComponents.h"
@@ -73,7 +73,7 @@ namespace ecs {
   typedef void (*after_components_cb)(GState *state);
   extern std::vector<after_components_cb> after_comps_callbacks;
   class GState {
-    ComponentTypes componentTypes{};
+    componentTypes componentTypes{};
     DataComponents dataComponents{};
     TemplateDB templates{};
     Archetypes archetypes{};
@@ -117,9 +117,9 @@ namespace ecs {
       resetEsOrder();
     }
 
-    [[nodiscard]] const ComponentTypes *getComponentTypes() const { return &componentTypes; }
+    [[nodiscard]] const componentTypes *getComponentTypes() const { return &componentTypes; }
 
-    [[nodiscard]] ComponentTypes *getComponentTypes() { return &componentTypes; }
+    [[nodiscard]] componentTypes *getComponentTypes() { return &componentTypes; }
 
     [[nodiscard]] const DataComponents *getDataComponents() const { return &dataComponents; }
 

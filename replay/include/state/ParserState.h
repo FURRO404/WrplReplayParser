@@ -8,7 +8,7 @@
 #include "mpi/GeneralObject.h"
 #include "mpi/SensorStates.h"
 #include "Replay/Replay.h"
-#include "danet/delta/deltaCompression.h"
+#include "daNet/delta/deltaCompression.h"
 #ifndef _ECS_CODEGEN
 #include "tracy/Tracy.hpp"
 #endif

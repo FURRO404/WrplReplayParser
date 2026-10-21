@@ -145,7 +145,7 @@ namespace ecs {
     uint32_t size;
     ComponentTypeFlags flags;
     static CompileComponentTypeRegister *tail;
-    friend struct ComponentTypes;
+    friend struct componentTypes;
   };
 
 
@@ -203,7 +203,7 @@ namespace ecs {
     return objectSize + bucketArraySize + nodesSize;
   }
 
-  struct ComponentTypes {
+  struct componentTypes {
     std::vector<ComponentInfo> types;
     std::unordered_map<component_type_t, type_index_t> typesIndex; // hash to index.
 
@@ -232,7 +232,7 @@ namespace ecs {
     uint32_t getTypeCount() const { return (uint32_t) types.size(); }
 
 
-    ~ComponentTypes();
+    ~componentTypes();
 
     inline ComponentTypeManager *getCTM(type_index_t index) {
       G_ASSERTF_RETURN(!(this->types.size() <= index || index < 0), nullptr, "Invalid {} index for getCTM", index);
@@ -309,7 +309,7 @@ namespace ecs {
                               create_ctm_t ctm, destroy_ctm_t dtm, ComponentTypeFlags flag);
   };
 
-  inline type_index_t ComponentTypes::findOr(component_type_t val, type_index_t ifNotFound) const {
+  inline type_index_t componentTypes::findOr(component_type_t val, type_index_t ifNotFound) const {
     auto v = typesIndex.find(val);
     if (v == typesIndex.end()) {
       return ifNotFound;
@@ -317,7 +317,7 @@ namespace ecs {
     return v->second;
   }
 
-  inline type_index_t ComponentTypes::findType(component_type_t tp) const {
+  inline type_index_t componentTypes::findType(component_type_t tp) const {
     return findOr(tp, INVALID_COMPONENT_TYPE_INDEX);
   }
 

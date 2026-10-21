@@ -4,7 +4,7 @@
 #include <ecs/query/entitySystem.h>
 #include <ecs/component.h>
 #include <ecs/componentsMap.h>
-#include <ecs/ComponentTypes.h>
+#include <ecs/componentTypes.h>
 #include <ecs/EntityManager.h>
 #include "Pull.h"
 

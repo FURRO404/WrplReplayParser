@@ -33,7 +33,7 @@ namespace ecs {
     }
   }
 
-  void TemplateDB::printTempl(const Template &t, int spacing, ComponentTypes &types, DataComponents &comps) {
+  void TemplateDB::printTempl(const Template &t, int spacing, componentTypes &types, DataComponents &comps) {
     std::shared_lock lk(this->template_mtx);
     std::string spaces_b(spacing, ' ');
     LOG("{}{}:", spaces_b, t.name);
