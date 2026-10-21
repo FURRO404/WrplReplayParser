@@ -14,7 +14,7 @@ namespace ecs {
   }
 
   archetype_t Archetypes::createArchetype(const component_index_t *__restrict components, uint32_t components_cnt,
-                                          DataComponents &dataComponents, componentTypes &componentTypes,
+                                          DataComponents &dataComponents, ComponentTypes &componentTypes,
                                           template_t parent_template) {
     // TODO: add support for findArchetype, only plan to do it if we 1: plan to use east::tuple_vector or make our own,
     // what it does makes that much easier

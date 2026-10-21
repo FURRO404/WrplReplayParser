@@ -297,7 +297,7 @@ namespace ecs {
     void applyFrom(TemplateDB &&db);
 
 
-    void printTempl(const Template &t, int spacing, componentTypes &types, DataComponents &comps);
+    void printTempl(const Template &t, int spacing, ComponentTypes &types, DataComponents &comps);
     friend GState;
     friend EntityManager;
     friend LoadContext; // so it can access dtor

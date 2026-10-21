@@ -73,7 +73,7 @@ namespace ecs {
   typedef void (*after_components_cb)(GState *state);
   extern std::vector<after_components_cb> after_comps_callbacks;
   class GState {
-    componentTypes componentTypes{};
+    ComponentTypes componentTypes{};
     DataComponents dataComponents{};
     TemplateDB templates{};
     Archetypes archetypes{};
@@ -117,9 +117,9 @@ namespace ecs {
       resetEsOrder();
     }
 
-    [[nodiscard]] const componentTypes *getComponentTypes() const { return &componentTypes; }
+    [[nodiscard]] const ComponentTypes *getComponentTypes() const { return &componentTypes; }
 
-    [[nodiscard]] componentTypes *getComponentTypes() { return &componentTypes; }
+    [[nodiscard]] ComponentTypes *getComponentTypes() { return &componentTypes; }
 
     [[nodiscard]] const DataComponents *getDataComponents() const { return &dataComponents; }
 

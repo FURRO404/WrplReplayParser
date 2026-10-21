@@ -36,7 +36,7 @@ namespace ecs {
 
 
 namespace ecs {
-  type_index_t componentTypes::registerType(const char *name, ecs::component_type_t type, uint32_t data_size,
+  type_index_t ComponentTypes::registerType(const char *name, ecs::component_type_t type, uint32_t data_size,
                                             ecs::ComponentSerializer *io, ecs::create_ctm_t ctm, ecs::destroy_ctm_t dtm,
                                             ComponentTypeFlags flags) {
     const type_index_t ctypeId = findType(type);
@@ -60,7 +60,7 @@ namespace ecs {
     return (type_index_t) getTypeCount() - 1;
   }
 
-  void componentTypes::initialize() {
+  void ComponentTypes::initialize() {
     // clear();
     ECS_LOGD1("ecs: initialize component Types");
     // initialize eid and tag first, for debugging purposes?
@@ -69,7 +69,7 @@ namespace ecs {
     }
   }
 
-  componentTypes::~componentTypes() {
+  ComponentTypes::~ComponentTypes() {
     for (auto &x: this->types) {
       if (x.ctm) {
         x.destroy(x.ctm);

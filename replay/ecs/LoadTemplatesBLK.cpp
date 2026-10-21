@@ -10,7 +10,7 @@
 namespace ecs {
   template<typename T>
   type_index_t getTypeIndex() {
-    static componentTypes *types;
+    static ComponentTypes *types;
     if (!types) {
       types = g_ecs_data->getComponentTypes();
     }
@@ -22,7 +22,7 @@ namespace ecs {
 
   component_index_t getComponentIndex(const char *name, type_index_t idx) {
     static DataComponents *types;
-    static componentTypes *cTypes;
+    static ComponentTypes *cTypes;
     if (!types) {
       types = g_ecs_data->getDataComponents();
       cTypes = g_ecs_data->getComponentTypes();

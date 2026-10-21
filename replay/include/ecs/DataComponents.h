@@ -140,9 +140,9 @@ namespace ecs {
     inline std::string_view getName(component_t hash) const { return getName(getIndex(hash)); }
 
     component_index_t createComponent(HashedConstString name_, type_index_t component_type, ComponentSerializer *io,
-                                      componentTypes &types);
+                                      ComponentTypes &types);
 
-    void initialize(componentTypes &types);
+    void initialize(ComponentTypes &types);
 
     inline size_t size() { return components.size(); }
 

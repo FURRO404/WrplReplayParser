@@ -25,9 +25,9 @@ void PyGState::include(py::module_ &m) {
   // there shouldn't be a case where you are trying to look up a component
   bind_readonly_vector_no_contain<std::vector<ecs::ComponentInfo>>(ecs, "ComponentInfoVector");
   bind_readonly_vector_no_contain<std::vector<ecs::DataComponent>>(ecs, "DataComponentVector");
-  py::class_<ecs::componentTypes>(ecs, "ComponentTypes")
-      .def_readonly("components", &ecs::componentTypes::types)
-      .def("getComponent", [](ecs::componentTypes &self, ecs::component_type_t &hash) -> std::optional<ecs::ComponentInfo*> {
+  py::class_<ecs::ComponentTypes>(ecs, "ComponentTypes")
+      .def_readonly("components", &ecs::ComponentTypes::types)
+      .def("getComponent", [](ecs::ComponentTypes &self, ecs::component_type_t &hash) -> std::optional<ecs::ComponentInfo*> {
         auto comp = self.getComponentData(hash);
         if(!comp) {
           return std::nullopt;

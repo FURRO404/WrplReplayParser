@@ -12,7 +12,7 @@ namespace ecs
   }
 
   component_index_t DataComponents::createComponent(HashedConstString name_, type_index_t component_type,
-                                                              ComponentSerializer *io, componentTypes &types) {
+                                                              ComponentSerializer *io, ComponentTypes &types) {
     const char *nameStr = name_.str;
     hash_str_t nameHash = name_.hash;
     auto existingId = this->getIndex(nameHash);
@@ -63,7 +63,7 @@ namespace ecs
     return (component_index_t)components.size() - 1;
   }
 
-  void DataComponents::initialize(componentTypes &types) {
+  void DataComponents::initialize(ComponentTypes &types) {
     //clear();
     ECS_LOGD1("ecs: initialize DataComponents Types");
     this->names.addDataRaw("", 1); // ensures the zeroth index is not a valid name / is emtpy name

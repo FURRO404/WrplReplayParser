@@ -103,7 +103,7 @@ namespace ecs {
   }
 
   void ComponentRef::createCopy(void *data, ecs::EntityManager *mgr, EntityId eid, component_index_t cidx) const {
-    componentTypes *types = g_ecs_data->getComponentTypes();
+    ComponentTypes *types = g_ecs_data->getComponentTypes();
     const auto typeInfo = types->getComponentData(componentTypeIndex);
     if (this->value) {
       if (is_pod(typeInfo->flags))
@@ -130,7 +130,7 @@ namespace ecs {
   }
 
   void ComponentRef::destructCopy(void *data) const {
-    componentTypes *types = g_ecs_data->getComponentTypes();
+    ComponentTypes *types = g_ecs_data->getComponentTypes();
     const auto typeInfo = types->getComponentData(componentTypeIndex);
     // we only need to clean up the data, so we dont do anything with POD data.
     if (need_constructor(typeInfo->flags)) // we dont own the data
@@ -146,7 +146,7 @@ namespace ecs {
   void ComponentRef::print(void *ext_data) const {
     if (!ext_data)
       return;
-    componentTypes *types = g_ecs_data->getComponentTypes();
+    ComponentTypes *types = g_ecs_data->getComponentTypes();
     auto ctm = types->getCTM(this->componentTypeIndex);
     LOG("{}", ctm->toString(ext_data, 0));
   }
@@ -156,7 +156,7 @@ namespace ecs {
   bool ComponentRef::is_equal(void *ext_data) const {
     if (!ext_data)
       return false;
-    componentTypes *types = g_ecs_data->getComponentTypes();
+    ComponentTypes *types = g_ecs_data->getComponentTypes();
     auto comp = types->getComponentData(this->componentTypeIndex);
     if (comp->flags & COMPONENT_TYPE_IS_POD)
       return memcmp(this->value, ext_data, componentTypeSize) == 0;
@@ -166,7 +166,7 @@ namespace ecs {
   void ComponentRef::swap(void *ext_data) {
     if (!ext_data)
       return;
-    componentTypes *types = g_ecs_data->getComponentTypes();
+    ComponentTypes *types = g_ecs_data->getComponentTypes();
     auto ctm = types->getCTM(this->componentTypeIndex);
     ctm->swap(this->value, ext_data);
   }
@@ -174,7 +174,7 @@ namespace ecs {
   std::string ComponentRef::toString(void *ext_data, int indent) const {
     if (!ext_data)
       return "<NULLPTR>";
-    componentTypes *types = g_ecs_data->getComponentTypes();
+    ComponentTypes *types = g_ecs_data->getComponentTypes();
     auto ctm = types->getCTM(this->componentTypeIndex);
     return ctm->toString(ext_data, indent);
   }
@@ -182,7 +182,7 @@ namespace ecs {
   std::string ComponentRef::toString(int indent) const { return this->toString(this->value, indent); }
 
   void ComponentRef::move(void *to, void *from) const {
-    componentTypes *types = g_ecs_data->getComponentTypes();
+    ComponentTypes *types = g_ecs_data->getComponentTypes();
     const auto typeInfo = types->getComponentData(componentTypeIndex);
     if (need_constructor(typeInfo->flags)) // we dont own the data
     {
@@ -198,7 +198,7 @@ namespace ecs {
 
   void ComponentRef::setNewValue(void *data, EntityManager &mgr) {
     this->value = data;
-    componentTypes *types = g_ecs_data->getComponentTypes();
+    ComponentTypes *types = g_ecs_data->getComponentTypes();
     const auto typeInfo = types->getComponentData(componentTypeIndex);
     if (need_constructor(typeInfo->flags)) // we dont own the data
     {
