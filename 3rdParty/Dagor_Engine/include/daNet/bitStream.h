@@ -69,7 +69,7 @@ public:
 
   void SetReadOffset(uint32_t newReadOffset) const { readOffset = newReadOffset; }
 
-  uint32_t GetNumberOfUnreadBits() const { return bitsUsed - readOffset; }
+  uint32_t GetNumberOfUnreadBits() const { return readOffset < bitsUsed ? bitsUsed - readOffset : 0; }
 
   uint32_t GetNumberOfAllocatedBits() const { return bitsAllocated; }
 
@@ -80,7 +80,7 @@ public:
 
   const uint8_t *GetDataOffset() { return data + bits2bytes(readOffset); }
 
-  void IgnoreBits(uint32_t bits) const { readOffset += std::min(bits, bitsUsed - readOffset); }
+  void IgnoreBits(uint32_t bits) const { readOffset += std::min(bits, GetNumberOfUnreadBits()); }
 
   void IgnoreBytes(uint32_t bytes) const { IgnoreBits(bytes2bits(bytes)); }
 
@@ -152,7 +152,7 @@ public:
   bool ReadBits(uint8_t *output, uint32_t bits) const {
     if (!bits)
       return true;
-    else if ((readOffset + bits) > bitsUsed) {
+    else if (bits > GetNumberOfUnreadBits()) {
       return false;
     }
 
@@ -300,7 +300,7 @@ public:
 
   bool Read(std::string &str) const {
     uint32_t sz;
-    if (!ReadCompressed(sz))
+    if (!ReadCompressed(sz) || sz > GetNumberOfUnreadBits() / 8)
       return false;
     str.resize(sz);
     if (!Read(str.data(), sz))

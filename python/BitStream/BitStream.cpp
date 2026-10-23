@@ -182,9 +182,10 @@ void PyBitStream::include(py::module_ &m) {
       },
       py::arg("bits"))
     .def("ReadBLK",
-         [](BitStream &bs) {
+         [](BitStream &bs) -> std::optional<DataBlock> {
            DataBlock blk{};
-           G_ASSERT(bs.Read(blk));
+           if (!bs.Read(blk))
+             return {};
            return blk;
          })
     .def("IgnoreBits", &BitStream::IgnoreBits)

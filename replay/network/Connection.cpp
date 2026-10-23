@@ -385,7 +385,8 @@ namespace net {
   }
 
   bool Connection::syncReadTemplate(const BitStream &bs, ecs::template_t templateId) {
-    G_ASSERT(templateId == serverTemplates.size()); // We rely on templateId being monotonically increased counter here
+    if (templateId != serverTemplates.size()) // We rely on templateId being monotonically increased counter here
+      return false;
 
     serverTemplates.resize(templateId + 1);
     serverToClientTemplates.resize(templateId + 1);
