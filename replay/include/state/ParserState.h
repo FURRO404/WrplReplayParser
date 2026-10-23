@@ -108,6 +108,7 @@ protected:
   // their weapons even after the owner entity disappears. Declared before the
   // entity manager so they also remain alive while it destroys its stores.
   std::vector<std::unique_ptr<unit::Unit>> owned_units;
+  // Key: the low 11 bits of the UID. An object id is the UID with the object kind in bits 11 and up.
   std::unordered_map<uint16_t, unit::Aircraft *> pending_aircraft;
   // Provisional aircraft that no creation claimed in time; they stay provisional.
   std::vector<unit::Aircraft *> unresolved_aircraft;
