@@ -152,6 +152,7 @@ void register_default_sigsev_handler() { SetUnhandledExceptionFilter(my_handler)
 
 static char signal_tracer_path[PATH_MAX] = "signal_tracer";
 
+// signal_tracer sits next to the module that holds this code (for Python, the .so), not next to the executable.
 static void resolve_signal_tracer_path() {
   static const char tracer_name[] = "signal_tracer";
   Dl_info info;
@@ -182,6 +183,8 @@ struct pipe_t {
   };
 };
 
+// A signal handler can use only async-signal-safe calls, and symbol lookup is not one. So the handler sends the
+// raw frames through a pipe to the signal_tracer program, which finds the names and prints them.
 void do_signal_safe_trace_local(cpptrace::frame_ptr *buffer, std::size_t count) {
   // Setup pipe and spawn child
   pipe_t input_pipe;

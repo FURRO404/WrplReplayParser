@@ -231,9 +231,8 @@ protected:
 public:
   explicit HostFile(std::shared_ptr<FileIndex> index) : File(std::move(index)) { init_hf(); }
 
-  /// A implementation for reading a file from the OS, will cache data on first read
-  /// will only reread if the file data has changed
-  /// after calling this, assume old span
+  /// A implementation for reading a file from the OS. Each call reads the full file again into the same buffer,
+  /// so a span from an earlier call is not valid after this call.
   /// \return a std::span<char> pointing to the container for the file data
   std::span<char> readRaw() override;
 

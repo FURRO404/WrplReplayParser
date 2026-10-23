@@ -55,7 +55,7 @@ uint32_t readSize(const BitStream &from) {
     case 2: return 8; // 1 byte
     case 3: return 16; // 2 bytes
     case 4: return 32; // 4 bytes
-    case 5: return 64; // 6 bytes
+    case 5: return 64; // 8 bytes
     case 6: return 96; // 12 bytes
     case 7: return 128; // 16 bytes
   }
