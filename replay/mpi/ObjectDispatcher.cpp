@@ -115,13 +115,17 @@ namespace mpi {
         break;
       }
       case MPI_PACKETS::ReflectionNoDecompress: {
-        danet::deserializeReflectables(*bs, obj_dispatcher, this->state);
+        if (danet::deserializeReflectables(*bs, obj_dispatcher, this->state) < 0)
+          LOGE("Failed to read reflection payload");
         break;
       }
       case MPI_PACKETS::Reflection1:
       case  MPI_PACKETS::Reflection2: {
         uint8_t tmp = 0;
-        bs->Read(tmp);
+        if (!bs->Read(tmp)) {
+          LOGE("Failed to read reflection header");
+          return;
+        }
         bool isCompressed = tmp == 1;
         BitStream *outBs;
         BitStream t{};
@@ -131,14 +135,17 @@ namespace mpi {
         } else {
           outBs = bs;
         }
-        danet::deserializeReflectables(*outBs, obj_dispatcher, this->state);
+        if (danet::deserializeReflectables(*outBs, obj_dispatcher, this->state) < 0)
+          LOGE("Failed to read reflection payload");
         break;
       }
       case MPI_PACKETS::Replication: {
-        uint8_t do_weird_check;
-        bs->Read(do_weird_check);
-        int16_t sorta_confirms_is_compressed;
-        bs->Read(sorta_confirms_is_compressed);
+        uint8_t do_weird_check = 0;
+        int16_t sorta_confirms_is_compressed = 0;
+        if (!bs->Read(do_weird_check) || !bs->Read(sorta_confirms_is_compressed)) {
+          LOGE("Failed to read replication header");
+          return;
+        }
         if (sorta_confirms_is_compressed > -1) {
           danet::ReplicatedObject::onRecvReplicationEvent(*bs, this->state);
         } else {

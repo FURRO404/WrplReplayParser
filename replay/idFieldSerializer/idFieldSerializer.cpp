@@ -226,24 +226,26 @@ void IdFieldSerializer255::writeFieldsIndex(BitStream &to, BitSize_t at) const {
 inline static BitSize_t alingedToByte(BitSize_t count) { return count + 8 - (((count - 1) & 7) + 1); }
 
 bool IdFieldSerializer255::readFieldsIndex(const BitStream &from) {
-  G_ASSERT(currRdSz && bitsPerId);
+  if (!currRdSz || !bitsPerId)
+    return false;
   BitSize_t startBody = from.GetReadOffset();
   // we are at the startBody so reread offset and check count
   uint16_t offset = 0;
   Index count = 0;
   const BitSize_t rewind = BYTES_TO_BITS(sizeof(offset)) + BYTES_TO_BITS(sizeof(count));
-  G_ASSERT(startBody >= rewind);
+  if (startBody < rewind)
+    return false;
   from.SetReadOffset(startBody - rewind);
-  from.Read(offset);
-  from.Read(count);
-  G_ASSERT(count == (currRdSz | (bitsPerId << BITS_PER_COUNT)));
+  if (!from.Read(offset) || !from.Read(count) || count != (currRdSz | (bitsPerId << BITS_PER_COUNT)))
+    return false;
   BitSize_t bitsForIndices = alingedToByte(currRdSz * bitsPerId);
-  from.SetReadOffset(startBody - rewind + BYTES_TO_BITS(offset) - bitsForIndices);
+  const BitSize_t table = startBody - rewind + BYTES_TO_BITS(offset);
+  if (table < startBody + bitsForIndices)
+    return false;
+  from.SetReadOffset(table - bitsForIndices);
   for (Index j = 0; j < currRdSz; ++j)
-    if (!from.ReadBits(reinterpret_cast<uint8_t *>(&indices[j]), bitsPerId)) {
-      G_ASSERT(false);
+    if (!from.ReadBits(reinterpret_cast<uint8_t *>(&indices[j]), bitsPerId))
       return false;
-    }
   from.SetReadOffset(startBody);
   return true;
 }
@@ -270,25 +272,34 @@ void IdFieldSerializer255::writeFieldsSize(BitStream &to, BitSize_t at) const {
   to.SetWriteOffset(end);
 }
 
+// Returns 0 for a malformed table. The count has 12 bits but sizes holds MAX_FIELDS_NUM entries, and
+// callers keep per-field arrays of that size, so a larger count must not get through.
 IdFieldSerializer255::Index IdFieldSerializer255::readFieldsSizeAndCount(const BitStream &from, BitSize_t &end) {
   uint16_t offset = 0;
   Index count = 0;
   BitSize_t start = from.GetReadOffset();
-  G_ASSERT((start & 7) == 0); // aligned to byte
-  from.Read(offset);
-  from.Read(count);
+  end = start;
+  currRdSz = 0;
+  if ((start & 7) || !from.Read(offset) || !from.Read(count))
+    return 0;
   BitSize_t startBody = from.GetReadOffset();
-  from.SetReadOffset(BYTES_TO_BITS(offset) + start);
-  currRdSz = count & BIT_MASK_COUNT;
-  bitsPerId = count >> BITS_PER_COUNT;
-  G_ASSERT(currRdSz);
-  for (Index j = 0; j < currRdSz; ++j) {
-    sizes[j] = readSize(from);
-    G_ASSERT(sizes[j]);
+  const uint64_t table = uint64_t(start) + BYTES_TO_BITS(uint64_t(offset));
+  const Index fields = count & BIT_MASK_COUNT;
+  if (!fields || fields > MAX_FIELDS_NUM || table < startBody || table > from.GetNumberOfBitsUsed())
+    return 0;
+  from.SetReadOffset(static_cast<BitSize_t>(table));
+  uint64_t body_bits = 0;
+  for (Index j = 0; j < fields; ++j) {
+    if (!readSizeChecked(from, sizes[j]) || (body_bits += sizes[j]) > table - startBody)
+      return 0;
   }
   from.AlignReadToByteBoundary();
+  if (from.GetReadOffset() > from.GetNumberOfBitsUsed())
+    return 0;
   end = from.GetReadOffset();
   from.SetReadOffset(startBody);
+  currRdSz = fields;
+  bitsPerId = count >> BITS_PER_COUNT;
   return currRdSz;
 }
 
