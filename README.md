@@ -5,28 +5,35 @@ a feature filled wrpl replay parser that has python bindings (and will be publis
 this parser lets you access battle messages, chat messages, various global object data (like player information and team information), and entity construction information plus aircraft and tank positions (see FMSync and GMSync functions)
 I have completed most of my inital goals, and will work to clean up the codebase as time goes on. this include reorganization / refactoring plus adding of probably sorely needed utility functions.
 
-currently supported replay version: 18c0b
+currently supported replay version: 18c1c (`0x00018c1c`). The parser rejects a replay with a different version and logs both versions.
 
 This attempts to be buildable for:
 
 Windows: MSYS2 minGW, MSVC
 
-Linux (WSL2) gcc
+Linux gcc (native and WSL2)
 
-## Aircraft syncs before entity creation
+## Building
 
-Some replays contain an aircraft sync before the corresponding ECS unit is created. The parser retains that sync and attaches it to the next aircraft creation with the same low 11-bit UID. Until then, the aircraft has `provisional == True`; its UID, positions and enabled event data are available, but its identity and storage details are not yet known. `ParserState.pending_aircraft` lists aircraft still waiting for creation, including any whose creation never appears. The sync does not provide a confirmed incarnation identifier, so a pending aircraft is attached only if its last sync is less than 5 s before the creation; in 126 replays the creation came 20 to 223 ms after the first early sync. An older pending aircraft stays provisional in `pending_aircraft`. `collect_all_units()` lists only units the ECS created. These properties describe what has been loaded, and do not change when the parser is rewound. A malformed aircraft packet still causes `LoadFromReader` to raise `RuntimeError`, with its partial aircraft updates discarded.
+```sh
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DPARSER_ENABLE_PYTHON_BINDINGS=ON
+cmake --build build
+```
+
+To build and install the Python module with pip, run `pip install .` in the repository directory.
+
+The Python bindings need Python 3.12 (`PYTHON_VERSION_TO_USE`). Set `-DENABLE_LTO=OFF` on machines with little memory, because the LTO link uses a large quantity of memory.
+
+## Tests
+
+Configure with `-DPARSER_ENABLE_TESTS=ON`, then run `ctest --test-dir build --output-on-failure`. See [tests/README.md](tests/README.md) for each test and its environment variables.
 
 # TODO
 
-setup loading of char.vromfs.bin and proper translation code
-
-overhaul directory structure
-
-work on reducing certain memory usage, vromfs are rather expensive to load. maybe make a vromfs repackager?
-
-ADD COMMENTS
-
-ensure LICENCE is correctly setup
-
-tests
+- [x] setup loading of char.vromfs.bin and proper translation code
+- [ ] overhaul directory structure
+- [ ] work on reducing certain memory usage, vromfs are rather expensive to load. maybe make a vromfs repackager?
+- [ ] ADD COMMENTS
+- [x] ensure LICENCE is correctly setup (the parser is BSD 3-Clause, see [LICENSE](LICENSE); the third-party code is in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md))
+- [x] tests
+- [ ] publish on pypi (`pyproject.toml` is ready, the upload is still to do)

@@ -1,9 +1,26 @@
-# Replay parser regression test
+# Parser tests
 
-Configure with `-DPARSER_ENABLE_TESTS=ON` and build the `lux_review_regression`
-target. Run `ctest --test-dir build -R lux_review_regression --output-on-failure`
-with `WRPL_TEST_GAME_PATH` set to the War Thunder installation directory. The
-test skips when that variable is absent.
+Configure with `-DPARSER_ENABLE_TESTS=ON`, build, then run
+`ctest --test-dir build --output-on-failure`.
+
+## bitstream_tests
+
+Needs no game data. It writes streams in memory and reads them back: bit reads
+at each offset, compressed values, nested streams, strings, and the
+`IdFieldSerializer255` and `IdFieldSerializer32` field tables. It also cuts or
+changes each stream and makes sure that the read fails and does not go past the
+end of the data.
+
+## logger_tests
+
+Needs no game data. It makes sure that a log call or a failed check before the
+log handler exists does not recurse (issue #12). An error goes to stderr, and a
+failed check throws `AssertException` one time.
+
+## packet_regression_tests
+
+Set `WRPL_TEST_GAME_PATH` to the War Thunder installation directory. The test
+skips when that variable is absent.
 
 Set `WRPL_TEST_REPLAY_PATH` to a server replay directory containing a rocket
 with a resolvable owner and weapon to include the owner-destruction check. The

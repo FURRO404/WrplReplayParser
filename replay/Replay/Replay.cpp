@@ -1,6 +1,7 @@
 #include "Replay/Replay.h"
 #include "filesystem"
 #include "dag_assert.h"
+#include "Logger.h"
 #include "daNet/daNetTypes.h"
 
 std::string packet_names[]{"End", "Start", "Aircraft", "Chat", "MPI", "NextSegment", "ECS", "Snapshot", "ECS_Msg_Sync"};
@@ -139,7 +140,11 @@ void Replay::load() {
   BAD_REPLAY(file_size != -1);
   BAD_REPLAY(this->Data.ReadInto(this->header, 0));
   BAD_REPLAY(this->header.header == 0x1000ace5);
-  BAD_REPLAY(this->header.magic == CURR_MAGIC);
+  if (this->header.magic != CURR_MAGIC) {
+    LOGE("Unsupported replay version {:#x}, this parser reads version {:#x}", this->header.magic, CURR_MAGIC);
+    is_valid = false;
+    return;
+  }
   zstd_offs = sizeof(ReplayHeader) + this->header.settings_blk_size;
 
   if (this->header.settings_blk_size) {
