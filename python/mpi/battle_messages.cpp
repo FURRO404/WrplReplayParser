@@ -2,6 +2,7 @@
 #include "Unit.h"
 #include "modules/ecs/EntityId.h"
 #include "mpi/GeneralObject.h"
+#include "mpi/LocalClientObject.h"
 #include "mpi/SensorStates.h"
 #include "modules/bind_readonly_vector.h"
 PyBattleMessages py_battle_messages;
@@ -362,33 +363,32 @@ void PyBattleMessages::include(py::module_ &m) {
       .def_readonly("velocity", &mpi::StoreSyncEvent::velocity, "World velocity, m/s")
       .def_readonly("flight_time", &mpi::StoreSyncEvent::flight_time, "Seconds since launch, or None");
 
-  using GW = PyGroundWeapon;
+  using GW = mpi::GroundWeaponSync;
   py::class_<GW>(mpi, "GroundWeaponSync")
-      .def_property_readonly("broken", [](const GW &g) { return g.w.broken(); },
+      .def_property_readonly("broken", &GW::broken,
                              "Probable: the weapon is disabled; rises at a hit, falls at the repair")
-      .def_property_readonly("heat", [](const GW &g) { return g.w.heat(); },
+      .def_property_readonly("heat", &GW::heat,
                              "Probable: barrel heat, 0 to 1; about +0.2 per main-gun shot. None when not sent "
                              "(machine guns)")
-      .def_property_readonly("turret_yaw", [](const GW &g) { return g.w.turret_yaw(); },
+      .def_property_readonly("turret_yaw", &GW::turret_yaw,
                              "Turret yaw relative to the hull, radians, the sign of the hull heading; None when "
                              "not sent")
-      .def_property_readonly("turret_pitch", [](const GW &g) { return g.w.turret_pitch(); },
+      .def_property_readonly("turret_pitch", &GW::turret_pitch,
                              "Gun elevation relative to the hull, radians; None when not sent")
-      .def_property_readonly("loaded_type", [](const GW &g) { return g.w.loaded_type(); },
-                             "Index into rounds of the ammunition in the gun: the type the next shot takes")
-      .def_property_readonly("selected_type", [](const GW &g) { return g.w.selected_type(); },
-                             "Index into rounds of the ammunition chosen for the next load")
-      .def_property_readonly("last_shot", [](const GW &g) { return g.w.last_shot(); },
-                             "Battle time in seconds of the last shot")
-      .def_property_readonly("ready", [](const GW &g) { return g.w.ready(); },
+      .def_property_readonly("loaded_type", &GW::loaded_type,
+                             "Index into the rounds of the ammunition in the gun: the type the next shot takes")
+      .def_property_readonly("selected_type", &GW::selected_type,
+                             "Index into the rounds of the ammunition chosen for the next load")
+      .def_property_readonly("last_shot", &GW::last_shot, "Battle time in seconds of the last shot")
+      .def_property_readonly("ready", &GW::ready,
                              "Raw ready field in seconds, or None if the ammo record was absent. Zero can occur "
                              "after a shot; its meaning and validity as a timestamp are unknown")
-      .def_readonly("rounds", &GW::rounds, "Rounds left per ammunition type; 65535 is unlimited");
+      .def_readonly("rounds_begin", &GW::rounds_begin, "First index in ParserState.ground_round_pool")
+      .def_readonly("round_count", &GW::round_count,
+                    "Rounds left per ammunition type, in ground_round_pool; 65535 is unlimited");
 
   using GS = mpi::GroundSyncEvent;
-  py::class_<GS>(mpi, "GroundSyncEvent",
-                 "Kept only when the vehicle's state changed: the state at a time is the vehicle's last event at "
-                 "or before it")
+  py::class_<GS>(mpi, "GroundSyncEvent")
       .def_readonly("time_ms", &GS::time_ms)
       .def_readonly("uid", &GS::uid)
       .def_readonly("unit", &GS::unit, "None for an AI gun")
@@ -422,7 +422,8 @@ void PyBattleMessages::include(py::module_ &m) {
       .def_property_readonly("aim_pitch", &GS::aim_pitch, "Probable: pitch of the aim, radians")
       .def_property_readonly("aim_distance", &GS::aim_distance,
                              "Probable: distance to the point under the aim, m; None when aim data is absent")
-      .def_readonly("weapon_count", &GS::weapon_count, "ParserState.ground_weapons(event) gives the weapons");
+      .def_readonly("weapons_begin", &GS::weapons_begin, "First index in ParserState.ground_weapon_pool")
+      .def_readonly("weapon_count", &GS::weapon_count, "Number of weapons in ParserState.ground_weapon_pool");
 
   py::enum_<mpi::SeekerSource>(mpi, "SeekerSource")
       .value("Weapon", mpi::SeekerWeapon)
@@ -475,6 +476,8 @@ void PyBattleMessages::include(py::module_ &m) {
   bind_readonly_vector_no_contain<std::pmr::vector<mpi::SeekerEvent>>(m, "SeekerEventList");
   bind_readonly_vector_no_contain<std::pmr::vector<mpi::ControlEvent>>(m, "ControlEventList");
   bind_readonly_vector_no_contain<std::pmr::vector<mpi::GroundSyncEvent>>(m, "GroundSyncEventList");
+  bind_readonly_vector_no_contain<std::pmr::vector<mpi::GroundWeaponSync>>(m, "GroundWeaponSyncList");
+  bind_readonly_vector<std::pmr::vector<uint16_t>>(m, "GroundRoundList");
   bind_readonly_vector_no_contain<std::pmr::vector<mpi::StoreSyncEvent>>(m, "StoreSyncEventList");
   bind_readonly_vector_no_contain<std::pmr::vector<mpi::SensorEvent>>(m, "SensorEventList");
   bind_readonly_vector_no_contain<std::pmr::vector<mpi::DesignationEvent>>(m, "DesignationEventList");

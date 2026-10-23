@@ -9,7 +9,7 @@
 bool separateServerSideDetection_g = true;
 bool resyncSaclosGuidanceParams = true; // actually known to be true, hopefully
 
-#define RET_FAIL(op) do { if (!(op)) return false; } while (0)
+#define RET_FAIL(op) G_ASSERT_RETURN((op), false);
 bool SensorsControlStates::deserialize(BitStream &bs) {
   RET_FAIL(bs.Read(first_bool));
   uint8_t sensor_type;
@@ -87,7 +87,7 @@ bool SensorsControlStates::deserialize(BitStream &bs) {
       }
       break;
     }
-    default: return false;
+    default: RET_FAIL(false);
   }
   bool stores_vec_thang;
   RET_FAIL(bs.Read(stores_vec_thang));
@@ -168,20 +168,17 @@ std::vector<std::string> unit::getUnitTagsName(std::string_view &name) {
     return {};
   return getUnitTagsBlk(blk);
 }
-// Keeps the block when all of it is there. A block cut short is skipped, so the reads
-// after it stay at the correct offset.
-static void ReadSeekerBits(ParserState &state, const BitStream &bs, uint32_t bits, mpi::SeekerEvent &ev) {
-  ev.bits = bits;
-  // A length past the end of the stream comes from a desync: allocate nothing for it.
-  if (bits > bs.GetNumberOfUnreadBits() || !state.keep.seekers) {
+static bool ReadSeekerBits(ParserState &state, const BitStream &bs, uint32_t bits, mpi::SeekerEvent &ev) {
+  RET_FAIL(bits <= bs.GetNumberOfUnreadBits());
+  if (!state.keep.seekers || (ev.source == mpi::SeekerAircraft && !ev.unit)) {
     bs.IgnoreBits(bits);
-    return;
+    return true;
   }
+  ev.bits = bits;
   ev.data.resize(BITS_TO_BYTES(bits));
-  if (bs.ReadBits(ev.data.data(), bits))
-    state.SeekerEvents.push_back(std::move(ev));
-  else
-    bs.IgnoreBits(bits);
+  RET_FAIL(bs.ReadBits(ev.data.data(), bits));
+  state.SeekerEvents.push_back(std::move(ev));
+  return true;
 }
 
 // Seeker fields are read MSB first in each byte; a multi-byte number is little-endian
@@ -285,8 +282,6 @@ bool FMSync(ParserState &state, BitStream &bs) {
   // Reused per thread to avoid an allocation on each aircraft packet.
   thread_local std::vector<std::pair<unit::Aircraft *, SpaceTimeEuler>> positions;
   positions.clear();
-  // New provisional units are owned locally until the entire packet is valid.
-  std::vector<std::unique_ptr<unit::Aircraft>> new_aircraft;
   uint16_t uid = 0;
   do {
     bool uid_serialized;
@@ -304,31 +299,17 @@ bool FMSync(ParserState &state, BitStream &bs) {
     if (!has_data) {
       // LOG("yes to data");
       if (separateServerSideDetection_g == false) {
-        return false; // unsupported detection layout
+        G_ASSERT(false); // be ready for if this ever happens
       } else {
         bool lVar30lessThan0, cVar4NE0;
         RET_FAIL(bs.Read(lVar30lessThan0));
         RET_FAIL(bs.Read(cVar4NE0));
         // if both true, then we do nothing
         if (!(lVar30lessThan0 && cVar4NE0)) {
+          // A sync can come before the ECS creates its aircraft. The game does not resolve it either:
+          // the record is read so the stream stays aligned, and nothing is stored for it.
           auto ref = state.getUnitObj(uid);
           auto unit = ref ? ref->AsAircraft() : nullptr;
-          if (!unit)
-            unit = state.getPendingAircraft(uid);
-          if (!unit) {
-            auto it = std::find_if(new_aircraft.begin(), new_aircraft.end(),
-                                   [uid](const auto &aircraft) { return aircraft->uid == uid; });
-            if (it != new_aircraft.end()) {
-              unit = it->get();
-            } else {
-              auto aircraft = std::make_unique<unit::Aircraft>(&state, uid);
-              aircraft->provisional = true;
-              unit = aircraft.get();
-              new_aircraft.push_back(std::move(aircraft));
-            }
-          }
-          if (unit->provisional)
-            unit->provisional_sync_ms = state.curr_time_ms;
           mpi::ControlEvent control{state.curr_time_ms, unit};
           RET_FAIL(bs.Read(control.on_ground));
           uint32_t some_uint;
@@ -379,7 +360,7 @@ bool FMSync(ParserState &state, BitStream &bs) {
                 int temp_zig = 0;
                 RET_FAIL(bs.ReadZigZag(temp_zig));
               }
-            if (rounds_left >= 0)
+            if (unit && rounds_left >= 0)
               state.AmmoEvents.push_back(
                 {state.curr_time_ms, unit, uint8_t(i), 0, uint32_t(rounds_left)});
           }
@@ -390,7 +371,8 @@ bool FMSync(ParserState &state, BitStream &bs) {
           RET_FAIL(bs.Read(some_packed_val));
           Point3 someEuler;
           netutils::unpack_euler(some_packed_val, st.euler);
-          positions.emplace_back(unit, st);
+          if (unit)
+            positions.emplace_back(unit, st);
 
           RET_FAIL(bs.Read(vals_4));
           Point3 vel;
@@ -421,7 +403,7 @@ bool FMSync(ParserState &state, BitStream &bs) {
             }
             RET_FAIL(bs.Read(engine.radiators));
           }
-          if (state.keep.controls)
+          if (unit && state.keep.controls)
             state.ControlEvents.push_back(std::move(control));
           uint8_t sensorsCount;
           RET_FAIL(bs.Read(sensorsCount));
@@ -435,7 +417,7 @@ bool FMSync(ParserState &state, BitStream &bs) {
             RET_FAIL(bs.Read(v));
           }
           for (uint8_t i = 0; i < sensorsCount; i++)
-            if (state.keep.sensors)
+            if (unit && state.keep.sensors)
               state.SensorEvents.push_back({state.curr_time_ms, unit, i, v, sensors[i]});
 
           uint8_t counterMeasuresCount;
@@ -454,7 +436,7 @@ bool FMSync(ParserState &state, BitStream &bs) {
           std::pmr::vector<TargetDesignationControlState> targets{targetsNum, state.get_allocator()};
           for (uint8_t i = 0; i < targetsNum; i++) {
             RET_FAIL(targets[i].deserialize(bs));
-            if (state.keep.designations)
+            if (unit && state.keep.designations)
               state.DesignationEvents.push_back({state.curr_time_ms, unit, i, targets[i]});
           }
           bool bit_thing;
@@ -470,10 +452,9 @@ bool FMSync(ParserState &state, BitStream &bs) {
           if (bit_thing_2) {
             uint32_t bits;
             RET_FAIL(bs.Read(bits));
-            RET_FAIL(bits <= bs.GetNumberOfUnreadBits());
             mpi::SeekerEvent event{state.curr_time_ms, mpi::SeekerAircraft};
             event.unit = unit;
-            ReadSeekerBits(state, bs, bits, event);
+            RET_FAIL(ReadSeekerBits(state, bs, bits, event));
           }
         }
       }
@@ -486,8 +467,6 @@ bool FMSync(ParserState &state, BitStream &bs) {
   // position. All 0 in a server replay.
   float maybe_floats[3];
   RET_FAIL(bs.Read(maybe_floats));
-  for (auto &unit : new_aircraft)
-    state.addPendingAircraft(std::move(unit));
   for (const auto &[unit, position] : positions) {
     *unit->positions.reserveOne() = position;
     unit->positions.checkAndPush(&state);
@@ -784,7 +763,6 @@ bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, mpi::Grou
   RET_FAIL(bs.Read(sensorsCount));
   RET_FAIL(sensorsCount <= SENSORS_COUNT);
   thread_local std::vector<SensorsControlStates> states{};
-  // assign, not resize: deserialize leaves fields it does not read, and these go out in the events
   states.assign(sensorsCount, {});
   for (auto &sensor: states) {
     RET_FAIL(sensor.deserialize(bs));
@@ -821,28 +799,6 @@ bool ParseVehicleInfo(ParserState &state, BitStream &bs, TankRef *ref, mpi::Grou
 }
 
 
-// True when the event repeats the vehicle's last stored event: everything after the time, the weapons and
-// their rounds. The records have no padding inside the compared bytes.
-static bool SameAsLast(const ParserState &state, const mpi::GroundSyncEvent &ev) {
-  using E = mpi::GroundSyncEvent;
-  using W = mpi::GroundWeaponSync;
-  static_assert(offsetof(E, spawn_counter) == 6 && offsetof(E, weapons_begin) == 64 && offsetof(W, rounds_begin) == 16);
-  if (ev.uid >= state.GroundSyncLast.size() || !state.GroundSyncLast[ev.uid])
-    return false;
-  const E &p = state.GroundSyncEvents[state.GroundSyncLast[ev.uid] - 1];
-  constexpr size_t from = offsetof(E, spawn_counter), to = offsetof(E, weapons_begin);
-  if (memcmp((const char *) &p + from, (const char *) &ev + from, to - from) != 0)
-    return false;
-  for (uint8_t i = 0; i < ev.weapon_count; i++) {
-    const W &a = state.GroundWeapons[p.weapons_begin + i], &b = state.GroundWeapons[ev.weapons_begin + i];
-    auto rounds = state.GroundRounds.begin();
-    if (memcmp(&a, &b, offsetof(W, rounds_begin)) != 0 ||
-        !std::equal(rounds + a.rounds_begin, rounds + a.rounds_begin + a.round_count, rounds + b.rounds_begin))
-      return false;
-  }
-  return true;
-}
-
 bool GMSync(ParserState &state, BitStream &bs) {
   ZoneScoped;
   uint16_t uid_lower;
@@ -856,11 +812,9 @@ bool GMSync(ParserState &state, BitStream &bs) {
   RET_FAIL(bs.Read(packet_reliability_order));
   // A packet holds the records of several vehicles. Nothing of it is published until all of them are
   // read: a failed read drops the events, pools and ground syncs the earlier records appended.
-  std::vector<std::pair<uint16_t, uint32_t>> last_before; // GroundSyncLast entries this packet changed
   struct PacketRollback {
     ParserState &s;
     size_t sensors, designations, seekers, weapons, rounds, syncs;
-    std::vector<std::pair<uint16_t, uint32_t>> &last_before;
     bool active = true;
     ~PacketRollback() {
       if (!active)
@@ -871,8 +825,6 @@ bool GMSync(ParserState &state, BitStream &bs) {
       s.GroundWeapons.resize(weapons);
       s.GroundRounds.resize(rounds);
       s.GroundSyncEvents.resize(syncs);
-      for (auto it = last_before.rbegin(); it != last_before.rend(); ++it)
-        s.GroundSyncLast[it->first] = it->second;
     }
   } packet_rollback{state,
                     state.SensorEvents.size(),
@@ -880,8 +832,7 @@ bool GMSync(ParserState &state, BitStream &bs) {
                     state.SeekerEvents.size(),
                     state.GroundWeapons.size(),
                     state.GroundRounds.size(),
-                    state.GroundSyncEvents.size(),
-                    last_before};
+                    state.GroundSyncEvents.size()};
   std::vector<std::pair<unit::Unit *, VehiclePublish>> publishes;
   for (; uid_lower < uid_upper; uid_lower++) {
     TankRef ref{};
@@ -911,11 +862,10 @@ bool GMSync(ParserState &state, BitStream &bs) {
         RET_FAIL(bs.Read(ref.turret_count));
         RET_FAIL(bs.Read(isCompressed));
         mpi::GroundSyncEvent ev{state.curr_time_ms, uid_lower};
-        ev.owner_id = state.ground_owner_id;
         ev.unit = ref.ref_1;
         ev.weapon_count = ref.turret_count;
         // With the list kept, the weapons go to the pool, and are dropped again when the event is not
-        // kept (no state, a failed read, or the same state as before); else to a scratch array.
+        // kept (no state or a failed read); else to a scratch array.
         const bool keep = state.keep.ground_syncs;
         struct PoolRollback {
           ParserState &s;
@@ -944,21 +894,10 @@ bool GMSync(ParserState &state, BitStream &bs) {
         if (isCompressed) {
           auto &hist = state.NetDelta.getHistory(uid_lower);
           auto res = state.NetDelta.netDelta.readDelta(bs, &hist);
-          if (!res.ok) {
-            // A missing base packet (isResetNeeded) is not a decode failure of this record: its state
-            // is skipped, as before, and the rest of the record still read. Anything else means the
-            // delta header itself could not be read, which must fail the packet instead of being
-            // dropped silently.
-            if (!res.isResetNeeded)
-              return false;
-          } else {
+          if (res.ok) {
             have_state = ParseVehicleInfo(state, res.bs, &ref, ev, weapons, publish);
-            if (!have_state) {
-              if (ref.ref_1 != nullptr)
-                LOGE("Failed to parse info for ground unit {} of uid {}", ref.ref_1->unit_name, ref.ref_1->uid);
-              // The outer stream is still in step, as the state came in its own length-prefixed
-              // block, but a state that does not decode is a decode failure like any other.
-              return false;
+            if (have_state == false && ref.ref_1 != nullptr) {
+              LOGE("Failed to parse info for ground unit {} of uid {}", ref.ref_1->unit_name, ref.ref_1->uid);
             }
           }
         } else {
@@ -1018,22 +957,17 @@ bool GMSync(ParserState &state, BitStream &bs) {
           if (has_sensor_info_2) {
             uint32_t bits;
             RET_FAIL(bs.Read(bits));
-            RET_FAIL(bits <= bs.GetNumberOfUnreadBits());
             mpi::SeekerEvent event{state.curr_time_ms, mpi::SeekerGround};
             event.unit = ref.ref_1;
-            ReadSeekerBits(state, bs, bits, event);
+            RET_FAIL(ReadSeekerBits(state, bs, bits, event));
           }
         }
         RET_FAIL(bs.GetNumberOfUnreadBits() >= ((8 - (bs.GetReadOffset() & 7)) & 7));
         bs.AlignReadToByteBoundary();
         if (have_state)
           publishes.emplace_back(ref.ref_1, std::move(publish));
-        if (keep && have_state && !SameAsLast(state, ev)) {
-          if (ev.uid >= state.GroundSyncLast.size())
-            state.GroundSyncLast.resize(ev.uid + 1);
-          last_before.emplace_back(ev.uid, state.GroundSyncLast[ev.uid]);
+        if (keep && have_state) {
           state.GroundSyncEvents.push_back(ev);
-          state.GroundSyncLast[ev.uid] = uint32_t(state.GroundSyncEvents.size());
           rollback.active = false;
         }
       }
@@ -1213,7 +1147,7 @@ bool ParseWeapon(ParserState &state, const BitStream &bs, get_weapon_cb cb) {
       if (flags & 1)
         ev.flight_time = sf1;
       ev.unknown_header_bit = vv2;
-      ReadSeekerBits(state, bs, sz, ev);
+      RET_FAIL(ReadSeekerBits(state, bs, sz, ev));
     } else if (resyncSaclosGuidanceParams) {
       bool do_stuff;
       RET_FAIL(bs.Read(do_stuff));

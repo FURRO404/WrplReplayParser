@@ -50,7 +50,7 @@ namespace mpi {
 
 
     Message *dispatchMpiMessage(MessageID mid) override;
-    bool applyMpiMessage(const Message *m) override;
+    void applyMpiMessage(const Message *m) override;
     ~GeneralObject() override = default;
   };
 
@@ -406,7 +406,7 @@ namespace mpi {
     uint16_t spotter_id = 0;
     uint16_t spotted_id = 0;
     /// Resolved when the message arrives. Null for a unit the parser does not track (the
-    /// ground targets of an air map) or when the uid's unit is of the other kind.
+    /// ground targets of an air map).
     unit::Unit *spotter = nullptr;
     unit::Unit *spotted = nullptr;
   };
@@ -444,33 +444,10 @@ namespace mpi {
     SpotEvent spot{};
   };
 
-  /// The cockpit instruments of the replay author's aircraft (0xD04A), once per flight-model
-  /// sync; only client replays have them. Pairs of a parameter id and its value; the set of ids
-  /// changes with the aircraft. Ids checked against the author's track: 0 airspeed m/s,
-  /// 39 vertical speed, 40 altitude (in feet on aircraft with imperial instruments), 41 the
-  /// same modulo 1000, 52 roll degrees, 53 pitch degrees with the sign reversed, 81 engine
-  /// RPM, 240 / 247 / 248 throttle of each engine 0 to 1.1 (1.1 is WEP or full afterburner,
-  /// -1 once the engine is lost).
-  struct CockpitEvent {
-    uint32_t time_ms = 0;
-    std::vector<std::pair<uint16_t, float>> params{};
-  };
-
-  class CockpitMessage : public Message {
-    bool readPayload(ParserState *state) override;
-
-  public:
-    CockpitMessage(IObject *o) : Message(o, MPI_PACKETS::ReplayCockpitParams) {}
-    CockpitEvent cockpit{};
-  };
-
-  /// 0xD047 to an aircraft: the RPM of each engine. Every 3.1 s per aircraft in a server replay, every
-  /// 0.11 s for the author of a client replay. It follows cockpit id 81 with r = 0.97 to 1.00.
   struct RpmEvent {
     uint32_t time_ms = 0;
     unit::Unit *unit = nullptr;
-    /// One per engine, in steps of about 9.55 (1 rad/s); a stopped jet engine reads 2000.
-    std::vector<uint16_t> rpm{};
+    std::vector<uint16_t> rpm{}; // one per engine
   };
 
   class RpmMessage : public Message {
@@ -479,14 +456,6 @@ namespace mpi {
   public:
     RpmMessage(IObject *o) : Message(o, MPI_PACKETS::FmwRpm) {}
     RpmEvent rpm{};
-  };
-
-  /// Object 0xb/3: messages about the replay author's own client.
-  struct LocalClientObject : public IObject {
-    LocalClientObject(ParserState *state) : IObject(state, 0x5803) {}
-    Message *dispatchMpiMessage(MessageID mid) override;
-    bool applyMpiMessage(const Message *m) override;
-    ~LocalClientObject() override = default;
   };
 
   class UnitBulletRearmMessage : public Message {

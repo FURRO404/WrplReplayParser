@@ -3,7 +3,7 @@
 #define MYEXTENSION_TEMPLATES_H
 
 #include <thread>
-#include <deque>
+#include <memory>
 #include <set>
 #include <mutex>
 
@@ -195,8 +195,10 @@ namespace ecs {
       indent_str.resize(indent, ' ');
       LOGE("{}TemplateDB memory usage:", indent_str);
       indent_str.resize(indent + 2, ' ');
-      size_t templates_size = this->templates.size() * sizeof(Template);
-      for (auto &t: templates) {
+      size_t templates_size =
+        this->templates.capacity() * sizeof(std::unique_ptr<Template>) + this->templates.size() * sizeof(Template);
+      for (auto &tp: templates) {
+        auto &t = *tp;
         size_t template_size = 0;
         template_size += t.name.size();
         template_size += t.components.capacity() * sizeof(ComponentTemplInfo);
@@ -244,18 +246,18 @@ namespace ecs {
     template_t AddTemplate(Template &&templ) {
       auto found = template_lookup.find(templ.name);
       if (found != template_lookup.end()) {
-        Template &t = this->templates[found->second];
+        Template &t = *this->templates[found->second];
         if (t.isInvalid()) // invalid template, lets move our new template into there instead
         {
-          this->templates[found->second] = std::move(templ);
+          t = std::move(templ);
         }
         return found->second;
       }
 
       auto idx = templates.size();
-      templates.push_back(std::move(templ));
+      templates.push_back(std::make_unique<Template>(std::move(templ)));
       inst_templates.resize(templates.size());
-      add_template_lookup(templates[idx].name, (template_t) idx);
+      add_template_lookup(templates[idx]->name, (template_t) idx);
 
       return (template_t) idx;
     }
@@ -267,7 +269,7 @@ namespace ecs {
         return found->second;
       Template temp{"", {}, {}};
       auto idx = templates.size();
-      templates.push_back(std::move(temp));
+      templates.push_back(std::make_unique<Template>(std::move(temp)));
       inst_templates.resize(templates.size(), nullptr);
       add_template_lookup(p, (template_t) idx);
       return (template_t) idx;
@@ -308,8 +310,7 @@ namespace ecs {
     }
 
   private:
-    // a deque, not a vector: a template another parse adds must not move the ones already handed out
-    std::deque<Template> templates;
+    std::vector<std::unique_ptr<Template>> templates;
     std::vector<InstantiatedTemplate *> inst_templates;
     // std::string is to ensure name always exists
     // the TransparentHash and TransparentEqual are done to allow for indexing with a std::string

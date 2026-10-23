@@ -22,12 +22,8 @@ static void on_aircraft_appear_es(const ecs::EventEntityCreated &evt,
                                   const FlightModelWrapStorageComponent &unit_storage__aircraft, const int &uid,
                                   unit::UnitRef &unit__ref, ecs::EntityManager &manager) {
   G_ASSERT(unit__ref.unit == nullptr);
-  unit__ref.unit = manager.owned_by->takePendingAircraft(static_cast<uint16_t>(uid));
-  if (!unit__ref.unit) {
-    unit__ref.unit = new unit::Aircraft(manager.owned_by, static_cast<uint16_t>(uid));
-    manager.owned_by->ownUnit(unit__ref.unit);
-  }
-  unit__ref.unit->uid = static_cast<uint16_t>(uid);
+  unit__ref.unit = new unit::Aircraft(manager.owned_by, static_cast<uint16_t>(uid));
+  manager.owned_by->ownUnit(unit__ref.unit);
   G_ASSERT_LOG(unit__ref.unit->LoadFromStorage(unit_storage__aircraft), "Failed to load aircraft with uid {}", uid);
 }
 
@@ -161,12 +157,7 @@ static void on_unit_appear_mpi_es(const ecs::EventEntityCreated &evt, const ecs:
         sz ^= mpi::QueuePacketTypes::MPI;
         auto m = mpi::dispatch(bs, &state, false);
         if (m != nullptr) {
-          // A queued message replays through the normal handlers, inside the ECS event of the packet
-          // that created the unit. ParsePacket fails that packet once the event is done.
-          if (!mpi::send(m)) {
-            LOGE("Failed to apply queued MPI message {:#x}", m->id);
-            state.queued_message_failed = true;
-          }
+          mpi::send(m);
           if (m->delete_message)
             state._delete(m);
         }

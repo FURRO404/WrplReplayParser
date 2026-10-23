@@ -716,13 +716,13 @@ mpi::Message *GMReflectable::dispatchMpiMessage(mpi::MessageID mid) {
   return BaseExtReflectable::dispatchMpiMessage(mid);
 }
 
-bool GMReflectable::applyMpiMessage(const mpi::Message *m) { return BaseExtReflectable::applyMpiMessage(m); }
+void GMReflectable::applyMpiMessage(const mpi::Message *m) { BaseExtReflectable::applyMpiMessage(m); }
 
 mpi::Message *FMWReflectable::dispatchMpiMessage(mpi::MessageID mid) {
   return BaseExtReflectable::dispatchMpiMessage(mid);
 }
 
-bool FMWReflectable::applyMpiMessage(const mpi::Message *m) { return BaseExtReflectable::applyMpiMessage(m); }
+void FMWReflectable::applyMpiMessage(const mpi::Message *m) { BaseExtReflectable::applyMpiMessage(m); }
 
 mpi::Message *BaseExtReflectable::dispatchMpiMessage(mpi::MessageID mid) {
   ZoneScoped;
@@ -765,7 +765,7 @@ mpi::Message *BaseExtReflectable::dispatchMpiMessage(mpi::MessageID mid) {
   return nullptr;
 }
 
-bool BaseExtReflectable::applyMpiMessage(const mpi::Message *m) {
+void BaseExtReflectable::applyMpiMessage(const mpi::Message *m) {
   ZoneScoped;
   switch (m->id) {
     case MPI_PACKETS::FmwRpm: {
@@ -784,10 +784,9 @@ bool BaseExtReflectable::applyMpiMessage(const mpi::Message *m) {
       Point2 gun_pointer = dir_to_sph_ang(camera_m->gun_circle_norm_vector);
       gun_pointer.x -= PI / 2;
       camera_euler.y = norm_s_ang(camera_euler.y - PI / 2);
-      const Quat &q = camera_m->camera_circle_quat;
       *camera_data.reserveOne() = {camera_euler,
                                    gun_pointer,
-                                   {q.x, q.y, q.z, q.w},
+                                   camera_m->camera_circle_quat,
                                    camera_m->camera_offset,
                                    camera_m->gun_circle_norm_vector,
                                    camera_m->camera_kind,
@@ -843,5 +842,4 @@ bool BaseExtReflectable::applyMpiMessage(const mpi::Message *m) {
     }
     default: break;
   }
-  return true;
 }

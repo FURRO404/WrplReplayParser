@@ -3,7 +3,7 @@
 // #include <generic/dag_sort.h>
 #include <network/message.h>
 // #include <network/netEvent.h>
-#include <danet/bitStream.h>
+#include <daNet/bitStream.h>
 #include <EASTL/functional.h>
 #include <EASTL/vector_map.h>
 #include <math/dag_adjpow2.h>

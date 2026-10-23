@@ -94,9 +94,7 @@ void PyUnit::include(py::module_ &m) {
 
   py_codegen_objects.include(m); // codegen objects require unit::Unit to exist
 
-  py::class_<unit::Aircraft, unit::Unit, std::unique_ptr<unit::Aircraft, py::nodelete>>(unit, "Aircraft")
-    .def_readonly("provisional", &unit::Aircraft::provisional,
-                  "True until the ECS creation arrives; identity and storage details are not yet available.");
+  py::class_<unit::Aircraft, unit::Unit, std::unique_ptr<unit::Aircraft, py::nodelete>>(unit, "Aircraft");
 
   py::class_<unit::Tank, unit::Unit, std::unique_ptr<unit::Tank, py::nodelete>> t(unit, "Tank");
 

@@ -321,7 +321,6 @@ namespace mpi {
     uint8_t shafts[MaxShafts]{};
     uint8_t weapon_count = 0;
     uint32_t weapons_begin = 0; ///< index into ParserState::GroundWeapons
-    uint64_t owner_id = 0; ///< identity of the ParserState that owns the weapon pools
 
     bool has_motion() const { return has(HasMotion); }
     /// The ship block was sent (some AI ships send the tank layout).

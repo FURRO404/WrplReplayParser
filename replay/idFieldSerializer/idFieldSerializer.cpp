@@ -152,26 +152,24 @@ uint32_t IdFieldSerializer32::readFieldsSizeAndFlag(const BitStream &from) {
   return fields;
 }
 
-bool IdFieldSerializer32::readFieldsSizeAndFlagChecked(const BitStream &from, uint32_t &fields) {
+bool IdFieldSerializer32::isValid(const BitStream &from) {
   const BitSize_t start = from.GetReadOffset();
   uint16_t offset = 0;
-  fields = 0;
-  currRdSz = 0;
-  if ((start & 7) || !from.Read(offset) || !readCompressed32Checked(from, fields) || !fields)
-    return false;
+  uint32_t fields = 0;
+  bool ok = !(start & 7) && from.Read(offset) && readCompressed32Checked(from, fields) && fields;
   const BitSize_t body = from.GetReadOffset();
   const uint64_t table = uint64_t(start) + uint64_t(offset) * 8;
-  if (table < body || table > from.GetNumberOfBitsUsed())
-    return false;
-  from.SetReadOffset(static_cast<BitSize_t>(table));
-  currRdSz = static_cast<uint8_t>(__popcount(fields));
-  uint64_t body_bits = 0;
-  for (uint8_t j = 0; j < currRdSz; ++j) {
-    if (!readSizeChecked(from, sizes[j]) || (body_bits += sizes[j]) > table - body)
-      return false;
+  ok = ok && table >= body && table <= from.GetNumberOfBitsUsed();
+  if (ok) {
+    from.SetReadOffset(static_cast<BitSize_t>(table));
+    uint64_t body_bits = 0;
+    for (int j = __popcount(fields); ok && j > 0; --j) {
+      uint32_t size = 0;
+      ok = readSizeChecked(from, size) && (body_bits += size) <= table - body;
+    }
   }
-  from.SetReadOffset(body);
-  return true;
+  from.SetReadOffset(start);
+  return ok;
 }
 
 void IdFieldSerializer32::skipReadingField(uint8_t index, const BitStream &from) const {

@@ -67,6 +67,7 @@ namespace ecs {
     for (CompileComponentTypeRegister *start = CompileComponentTypeRegister::tail; start; start = start->next) {
       registerType(start->name, start->name_hash, start->size, start->io, start->ctm, start->dtm, start->flags);
     }
+    createAllCTMs();
   }
 
   ComponentTypes::~ComponentTypes() {
