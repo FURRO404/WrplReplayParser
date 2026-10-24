@@ -57,6 +57,7 @@ namespace net {
         CNET_LOGD3("ID_ENTITY_MSG for entity {:#x} of template {}", serverEid,
                    this->state->g_entity_mgr.getEntityTemplateName(eid));
         // actual code
+        // The parser reads only the target entity of an ECS message, not the message body.
         break;
       }
       case ID_ENTITY_REPLICATION:

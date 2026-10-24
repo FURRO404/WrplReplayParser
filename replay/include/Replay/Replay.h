@@ -294,6 +294,8 @@ public:
   }
 };
 
+// streamWrite true: each packet goes through zstd (level 9) when it is written.
+// streamWrite false: the packets stay raw in memory, and createReplay() compresses them (level 18).
 template<bool streamWrite>
 class ReplayWriter {
 

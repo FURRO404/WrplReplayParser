@@ -108,6 +108,7 @@ namespace mpi // message passing interface
     return write_object_ext_uid(bs, obj->getUID(), obj->mpiObjectExtUID);
   }
 
+// Not used. It does not compile ("uin8_t"), and its loop does not end.
 #define SWITCH_MESSAGE_INDEXES(fields)      \
   while (fields != 0) {                     \
     uin8_t curr_index = 0;                  \
@@ -209,6 +210,9 @@ namespace mpi // message passing interface
   IObject *dispatch_object(mpi::ObjectID oid, ObjectExtUID ext_uid, ParserState *state);
 
 
+  // Calls cb once for each field in the IdFieldSerializer32 mask, with the field id. checked true: a failed field
+  // or a field that reads a different size than its table entry makes parse() return false. checked false: a
+  // failed field is logged, and the parse continues.
   inline bool Message::parse(const eastl::function<bool(const BitStream *, uint32_t)> &cb, bool checked) {
     ZoneScoped;
     uint32_t fields = 0;
