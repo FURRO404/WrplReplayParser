@@ -194,6 +194,7 @@ namespace mpi {
                                                                                : nullptr);
   }
 
+  // An MPI packet is: object id (see read_object_ext_uid), uint16 message id, then the payload from the next byte.
   Message *dispatch(const BitStream &bs, ParserState *state, bool copy_payload) {
     ZoneScoped;
     ObjectID oid;

@@ -45,6 +45,7 @@ namespace MPI_PACKETS {
 }
 namespace mpi {
 
+  /// Object 0xb/2: the battle messages (kills, damage, awards) and the hit and shot messages.
   struct GeneralObject : public IObject {
     GeneralObject(ParserState *state) : IObject(state, 0x5802) {}
 

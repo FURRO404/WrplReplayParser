@@ -290,6 +290,7 @@ public:
     }
   }
 
+  // Waits 1 s at most, so messages can still be in the queue when it returns.
   void wait_until_empty() {
     if (!this->thread_exists)
       return;
@@ -482,6 +483,8 @@ void log_ext(const std::string &func, int line, sink_handle_t sink, LOGLEVEL lev
 // because you cant define macros inside a macro, you have to manually expand the macro and add the # to all the
 // 'define's
 
+// The handle stays INVALID_SINK_HANDLER until loadSinkFromDataBlock() finds a sink with the same name. Until
+// then, only its errors are logged, and they go to the default sink.
 #define DEFINE_HANDLE(var_name) extern sink_handle_t var_name;
 #define CREATE_HANDLE(var_name, handle)          \
   sink_handle_t var_name = INVALID_SINK_HANDLER; \

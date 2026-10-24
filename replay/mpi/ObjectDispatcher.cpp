@@ -291,6 +291,8 @@ namespace mpi {
     return true;
   }
 
+  // oid >> 11 is the object kind and the low 11 bits are the index in that kind. The unit kinds (ExtMpiTypes)
+  // find their unit through the ECS entity in extUid.
   IObject *ObjectDispatcher(ObjectID oid, ObjectExtUID extUid, ParserState *state) {
     ZoneScoped;
     uint16_t count = oid & 0x7ff;

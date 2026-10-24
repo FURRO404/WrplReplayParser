@@ -20,6 +20,8 @@
 ///@note intended to be a base class for MPI
 ///@note call order for writing is <Write Placeholders> <Write Body> <writeFieldsSize()>
 ///      and reverse for reading <readFieldsSizeAndFlag()> <Read Body>
+///@note stream layout: uint16 offset in bytes from the start to the size table, compressed field mask, body,
+///      size table. Each set bit of the mask is one field of the body.
 ///
 class IdFieldSerializer32 {
   static const uint8_t MAX_FIELDS_NUM = 32;
@@ -52,6 +54,10 @@ private:
 ///@note call order for writing is <Write Placeholders> <Write Body> [writeFieldsIndex()] <writeFieldsSize()>
 ///      and reverse for reading <readFieldsSizeAndCount()> [readFieldsIndex()] <Read Body>
 ///      [] brackets mean optional
+///@note stream layout: uint16 offset in bytes from the start to the size table, uint16 count (low 12 bits are the
+///      field count, high 4 bits are the bits for each id), body, [field ids aligned to a byte], size table.
+///      The field ids end where the size table starts. Each size is a 3-bit selector, and selector 0 means that
+///      a compressed size follows.
 ///
 class IdFieldSerializer255 {
   static const int BITS_PER_COUNT = 12;

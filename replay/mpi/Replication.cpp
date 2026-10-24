@@ -114,6 +114,8 @@ MissionZone *create_zone(BitStream &bs, uint8_t zone_type, ParserState *state) {
   return *state->Zones[zone_id]->curr();
 }
 
+// The class id is the registration index, and the registrations run in this order. The game sorts its classes by
+// name (normalizeReplication), but the parser does not call it, so keep this list in name order.
 IMPLEMENT_REPLICATION(Airfield) // 0
 
 IMPLEMENT_REPLICATION(BombingZone) // 1

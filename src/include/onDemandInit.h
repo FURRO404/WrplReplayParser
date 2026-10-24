@@ -33,6 +33,7 @@ public:
 
 private:
   T *getPtr() const {
+    // When LDAG_DBGLEVEL is 0, G_ASSERT does not stop. Use init_state() first if the object can be missing.
     G_ASSERT(initialized == true);
     return (T *) &obj;
   }
