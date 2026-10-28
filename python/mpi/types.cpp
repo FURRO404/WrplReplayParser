@@ -99,8 +99,9 @@ void PyMpiTypes::include(py::module_ &m) {
   py::class_<danet::CameraData>(mpi, "CameraData")
     .def_readonly("camera_euler", &danet::CameraData::camera_euler)
     .def_readonly("gun_pointer", &danet::CameraData::gun_pointer, "Spherical angles of gun_dir")
-    .def_property_readonly("quat", [](const danet::CameraData &d) { return Point4(d.quat.x, d.quat.y, d.quat.z, d.quat.w); },
-                           "Camera rotation as sent, (x, y, z, w)")
+    .def_property_readonly(
+      "quat", [](const danet::CameraData &d) { return Point4(d.quat.x, d.quat.y, d.quat.z, d.quat.w); },
+      "Camera rotation as sent, (x, y, z, w)")
     .def_property_readonly("view_dir", &danet::CameraData::view_dir,
                            "Where the camera looks: (0, 0, 1) rotated by quat, world axes. In a gunner sight it "
                            "is 0.26 deg (median) from gun_dir; in third person it is free")

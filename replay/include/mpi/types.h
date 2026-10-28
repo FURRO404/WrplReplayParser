@@ -16,7 +16,6 @@ namespace unit {
 #include "daNet/daNetTypes.h"
 #include "ecs/entityId.h"
 #include "math/dag_Point3.h"
-#include "math/dag_Quat.h"
 #include "reflection.h"
 
 namespace danet {
